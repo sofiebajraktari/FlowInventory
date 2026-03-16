@@ -1,0 +1,7 @@
+# Mjedisi / secrets – mos i shto në GitHub
+.env
+.env.local
+.env.*.local
+
+# Varësitë
+node_modules/
