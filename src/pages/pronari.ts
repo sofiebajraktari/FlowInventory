@@ -2,9 +2,12 @@ import { signOut } from '../lib/auth.js'
 import { isSupabaseConfigured, supabase } from '../lib/supabase.js'
 import {
   addProduct,
+  deleteShortage,
   generateOrdersFromShortages,
   getProducts,
   getTodayShortages,
+  markOrderAsSent,
+  updateShortageMeta,
   updateSuggestedQty,
   type ProductView,
   type ShortageView,
@@ -16,6 +19,13 @@ const iconTrend = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBo
 const iconBox = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" /></svg>`
 
 export function renderPronari(container: HTMLElement): void {
+  type ImportRow = {
+    name: string
+    supplier: string
+    category: 'barna' | 'front'
+    aliases: string[]
+  }
+
   let shortages: ShortageView[] = []
   let products: ProductView[] = []
   let searchQuery = ''
@@ -37,6 +47,117 @@ export function renderPronari(container: HTMLElement): void {
     toast.textContent = message
     document.body.appendChild(toast)
     window.setTimeout(() => toast.remove(), 1800)
+  }
+
+  function normalizeHeader(value: string): string {
+    return value
+      .toLocaleLowerCase('sq-AL')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]/g, '')
+  }
+
+  function pickByKeys(row: Record<string, unknown>, keys: string[]): string {
+    for (const [k, v] of Object.entries(row)) {
+      if (keys.includes(normalizeHeader(k))) return String(v ?? '').trim()
+    }
+    return ''
+  }
+
+  function parseCategory(raw: string): 'barna' | 'front' {
+    return raw.trim().toLocaleLowerCase('sq-AL') === 'front' ? 'front' : 'barna'
+  }
+
+  function openShortageEditModal(initial: ShortageView): Promise<{
+    suggestedQty: number
+    urgent: boolean
+    note: string
+  } | null> {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div')
+      overlay.className = 'fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4'
+      overlay.innerHTML = `
+        <div class="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+          <h3 class="text-lg font-semibold text-slate-900 mb-1">Përditëso mungesën</h3>
+          <p class="text-sm text-slate-500 mb-4">Ndrysho të dhënat për <strong>${initial.productName}</strong>.</p>
+          <div class="grid gap-3 md:grid-cols-2">
+            <label class="text-sm text-slate-700">
+              Sasia për porosi
+              <input id="owner-edit-qty" type="number" min="1" value="${initial.suggestedQty}" class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500" />
+            </label>
+            <label class="text-sm text-slate-700 flex items-end">
+              <span class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2">
+                <input id="owner-edit-urgent" type="checkbox" ${initial.urgent ? 'checked' : ''} class="h-4 w-4 rounded border-slate-300 text-red-600 focus:ring-sky-500" />
+                URGJENT
+              </span>
+            </label>
+          </div>
+          <label class="mt-3 block text-sm text-slate-700">
+            Shënimi
+            <textarea id="owner-edit-note" class="mt-1 w-full min-h-48 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500" placeholder="Shkruaj shënimin...">${initial.note ?? ''}</textarea>
+          </label>
+          <div class="mt-4 flex items-center justify-end gap-2">
+            <button type="button" id="owner-edit-cancel" class="premium-btn-ghost rounded-xl px-4 py-2 text-sm font-medium">Anulo</button>
+            <button type="button" id="owner-edit-save" class="premium-btn-primary rounded-xl px-4 py-2 text-sm font-semibold">Ruaj ndryshimet</button>
+          </div>
+        </div>
+      `
+      document.body.appendChild(overlay)
+
+      const qtyInput = overlay.querySelector<HTMLInputElement>('#owner-edit-qty')
+      const urgentInput = overlay.querySelector<HTMLInputElement>('#owner-edit-urgent')
+      const noteInput = overlay.querySelector<HTMLTextAreaElement>('#owner-edit-note')
+      const cancelBtn = overlay.querySelector<HTMLButtonElement>('#owner-edit-cancel')
+      const saveBtn = overlay.querySelector<HTMLButtonElement>('#owner-edit-save')
+      qtyInput?.focus()
+
+      const close = (value: { suggestedQty: number; urgent: boolean; note: string } | null) => {
+        overlay.remove()
+        resolve(value)
+      }
+
+      cancelBtn?.addEventListener('click', () => close(null))
+      saveBtn?.addEventListener('click', () => {
+        const qty = Math.max(1, Number(qtyInput?.value ?? 1) || 1)
+        close({
+          suggestedQty: qty,
+          urgent: Boolean(urgentInput?.checked),
+          note: noteInput?.value ?? '',
+        })
+      })
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) close(null)
+      })
+    })
+  }
+
+  function openConfirmModal(title: string, description: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div')
+      overlay.className = 'fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4'
+      overlay.innerHTML = `
+        <div class="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+          <h3 class="text-lg font-semibold text-slate-900 mb-1">${title}</h3>
+          <p class="text-sm text-slate-600 mb-5">${description}</p>
+          <div class="flex items-center justify-end gap-2">
+            <button type="button" id="owner-confirm-cancel" class="premium-btn-ghost rounded-xl px-4 py-2 text-sm font-medium">Anulo</button>
+            <button type="button" id="owner-confirm-ok" class="rounded-xl border border-red-200 bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500">Vazhdo</button>
+          </div>
+        </div>
+      `
+      document.body.appendChild(overlay)
+
+      const close = (value: boolean) => {
+        overlay.remove()
+        resolve(value)
+      }
+
+      overlay.querySelector<HTMLButtonElement>('#owner-confirm-cancel')?.addEventListener('click', () => close(false))
+      overlay.querySelector<HTMLButtonElement>('#owner-confirm-ok')?.addEventListener('click', () => close(true))
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) close(false)
+      })
+    })
   }
 
   function getFilteredRows(): ShortageView[] {
@@ -88,8 +209,16 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
         <td class="px-3 py-2 text-slate-700 text-xs">${s.supplierName}</td>
         <td class="px-3 py-2">
           <div class="flex items-center gap-1">
-            ${s.urgent ? '<span class="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 border border-red-200">URGJENT</span>' : ''}
+            <span class="rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+              s.urgent
+                ? 'bg-red-100 text-red-700 border-red-200'
+                : 'bg-slate-100 text-slate-600 border-slate-200'
+            }">
+              ${s.urgent ? 'URGJENT' : 'Normal'}
+            </span>
             ${s.note ? `<span class="text-[11px] text-slate-600">${s.note}</span>` : ''}
+            <button data-action="edit-note" data-id="${s.id}" title="Ndrysho mungesën" class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[16px] leading-none text-black hover:bg-slate-50">✎</button>
+            <button data-action="delete-shortage" data-id="${s.id}" title="Fshi mungesën" class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[16px] leading-none text-black hover:bg-red-50">✖</button>
           </div>
         </td>
       </tr>`
@@ -110,9 +239,16 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
               <span class="font-semibold text-sky-700">#${o.id}</span>
               <span class="ml-1 text-slate-700">${o.supplier}</span>
             </div>
-            <button data-action="copy" data-order-id="${o.id}" class="rounded-lg bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-500">
-              Kopjo reciptin
-            </button>
+            <div class="flex items-center gap-1">
+              <button data-action="copy" data-order-id="${o.id}" class="rounded-lg bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-500">
+                Kopjo reciptin
+              </button>
+              <button data-action="mark-sent" data-order-id="${o.id}" class="rounded-lg border border-slate-300 px-2 py-1 text-[11px] font-semibold ${
+                o.status === 'SENT' ? 'text-emerald-700 bg-emerald-50' : 'text-slate-700 bg-white hover:bg-slate-50'
+              }">
+                ${o.status === 'SENT' ? 'Dërguar' : 'Shëno dërguar'}
+              </button>
+            </div>
           </div>
           <ul class="mt-1.5 space-y-0.5 text-[11px] text-slate-600">
             ${o.items.map((it) => `<li>• ${it}</li>`).join('')}
@@ -189,9 +325,10 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
           </div>
           <div class="flex items-center gap-2">
             <button type="button" data-theme-toggle="1" class="theme-toggle-chip rounded-full px-2.5 py-1 text-[11px] font-semibold"></button>
-            <button type="button" class="premium-btn-ghost hidden md:inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs">
+            <button type="button" id="btn-import-csv" class="premium-btn-ghost hidden md:inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs">
               Import Excel
             </button>
+            <input id="import-csv-input" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="hidden" />
             <button type="button" id="btn-generate-orders" class="premium-btn-primary inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold">
               Gjenero porositë
             </button>
@@ -311,6 +448,8 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
   const productSupplierInput = document.getElementById('owner-product-supplier') as HTMLInputElement | null
   const productCategoryInput = document.getElementById('owner-product-category') as HTMLSelectElement | null
   const productAliasesInput = document.getElementById('owner-product-aliases') as HTMLInputElement | null
+  const importBtn = document.getElementById('btn-import-csv') as HTMLButtonElement | null
+  const importInput = document.getElementById('import-csv-input') as HTMLInputElement | null
 
   searchInput?.addEventListener('input', () => {
     searchQuery = searchInput.value
@@ -344,6 +483,83 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     showToast('Bari u shtua. Do të dalë edhe te punëtori.')
   })
 
+  importBtn?.addEventListener('click', () => importInput?.click())
+  importInput?.addEventListener('change', async () => {
+    const file = importInput.files?.[0]
+    if (!file) return
+    let rows: ImportRow[] = []
+
+    const filename = file.name.toLocaleLowerCase('sq-AL')
+    const isExcel = filename.endsWith('.xlsx') || filename.endsWith('.xls')
+
+    if (isExcel) {
+      try {
+        const XLSX = await import('xlsx')
+        const buffer = await file.arrayBuffer()
+        const wb = XLSX.read(buffer, { type: 'array' })
+        const first = wb.SheetNames[0]
+        if (!first) {
+          showToast('Excel pa sheet të vlefshëm.')
+          return
+        }
+        const sheet = wb.Sheets[first]
+        const jsonRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
+        rows = jsonRows.map((r): ImportRow => {
+          const categoryRaw = pickByKeys(r, ['category', 'kategoria', 'tipi']).toLocaleLowerCase('sq-AL')
+          return {
+            name: pickByKeys(r, ['name', 'emri', 'produkti', 'barna', 'bari']),
+            supplier: pickByKeys(r, ['supplier', 'furnitori', 'furnitori']),
+            category: parseCategory(categoryRaw),
+            aliases: pickByKeys(r, ['aliases', 'alias', 'sinonime'])
+              .split(/[|,]/)
+              .map((a) => a.trim())
+              .filter(Boolean),
+          }
+        }).filter((r) => r.name && r.supplier)
+      } catch {
+        showToast('Leximi i Excel dështoi.')
+        return
+      }
+    } else {
+      const text = await file.text()
+      const lines = text.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)
+      if (lines.length <= 1) {
+        showToast('CSV pa rreshta të vlefshëm.')
+        return
+      }
+      rows = lines.slice(1).map((row): ImportRow => {
+        const [name = '', supplier = '', category = 'barna', aliases = ''] = row.split(',')
+        return {
+          name: name.trim(),
+          supplier: supplier.trim(),
+          category: parseCategory(category),
+          aliases: aliases.split(/[|,]/).map((a) => a.trim()).filter(Boolean),
+        }
+      }).filter((r) => r.name && r.supplier)
+    }
+
+    if (!rows.length) {
+      showToast('Nuk u gjetën rreshta valide për import.')
+      importInput.value = ''
+      return
+    }
+
+    let okCount = 0
+    for (const row of rows) {
+      const result = await addProduct({
+        name: row.name,
+        supplier: row.supplier,
+        category: row.category,
+        aliases: row.aliases,
+      })
+      if (result.ok) okCount += 1
+    }
+    products = await getProducts()
+    refreshUI()
+    showToast(`Import u krye: ${okCount} produkte.`)
+    importInput.value = ''
+  })
+
   container.addEventListener('click', async (event) => {
     const target = event.target as HTMLElement
     const btn = target.closest<HTMLButtonElement>('button[data-action]')
@@ -374,6 +590,58 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
         showToast('Recipti u kopjua!')
       } catch {
         showToast('Kopjimi dështoi.')
+      }
+      return
+    }
+
+    if (action === 'mark-sent') {
+      const orderId = Number(btn.dataset.orderId)
+      const index = generatedOrders.findIndex((o) => o.id === orderId)
+      if (index === -1) return
+      try {
+        generatedOrders[index] = await markOrderAsSent(generatedOrders[index])
+        refreshUI()
+        showToast('Porosia u shënua si dërguar.')
+      } catch {
+        showToast('Dështoi shënimi si dërguar.')
+      }
+      return
+    }
+
+    if (action === 'edit-note' && id) {
+      const current = shortages.find((s) => s.id === id)
+      if (!current) return
+      const edited = await openShortageEditModal(current)
+      if (!edited) return
+      try {
+        // suggestedQty mbahet në klient para gjenerimit të porosive.
+        shortages = shortages.map((s) =>
+          s.id === id ? { ...s, suggestedQty: Math.max(1, edited.suggestedQty) } : s
+        )
+        shortages = await updateShortageMeta(id, { note: edited.note, urgent: edited.urgent })
+        shortages = shortages.map((s) =>
+          s.id === id ? { ...s, suggestedQty: Math.max(1, edited.suggestedQty) } : s
+        )
+        refreshUI()
+        showToast('Mungesa u përditësua.')
+      } catch {
+        showToast('Ndryshimi dështoi.')
+      }
+      return
+    }
+
+    if (action === 'delete-shortage' && id) {
+      const yes = await openConfirmModal(
+        'Fshirja e mungesës',
+        'A je i sigurt që do ta fshish këtë mungesë? Ky veprim nuk kthehet.'
+      )
+      if (!yes) return
+      try {
+        shortages = await deleteShortage(id)
+        refreshUI()
+        showToast('Mungesa u fshi.')
+      } catch {
+        showToast('Fshirja dështoi.')
       }
       return
     }

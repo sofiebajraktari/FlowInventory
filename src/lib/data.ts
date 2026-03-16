@@ -3,8 +3,10 @@ import {
   addProduct as addProductMock,
   addShortage as addShortageMock,
   buildOrdersFromShortages as buildOrdersFromShortagesMock,
+  deleteShortage as deleteShortageMock,
   getProducts as getProductsMock,
   getShortages as getShortagesMock,
+  updateShortageMeta as updateShortageMetaMock,
   updateSuggestedQty as updateSuggestedQtyMock,
   type MissingItem as MockMissingItem,
   type MockProduct,
@@ -12,8 +14,10 @@ import {
 
 export interface OwnerOrder {
   id: number
+  dbId?: string
   supplier: string
   items: string[]
+  status?: 'DRAFT' | 'SENT'
 }
 
 export interface ProductView {
@@ -201,6 +205,35 @@ export async function updateSuggestedQty(id: string, delta: number): Promise<Sho
   )
 }
 
+export async function updateShortageMeta(
+  id: string,
+  patch: { urgent?: boolean; note?: string }
+): Promise<ShortageView[]> {
+  if (!isSupabaseConfigured) {
+    const rows = updateShortageMetaMock(id, patch)
+    return fromMockShortages(rows)
+  }
+
+  const payload: Record<string, unknown> = {}
+  if (typeof patch.urgent === 'boolean') payload.urgent = patch.urgent
+  if (typeof patch.note === 'string') payload.note = patch.note
+  if (!Object.keys(payload).length) return getTodayShortages()
+
+  const { error } = await supabase.from('mungesat').update(payload).eq('id', id)
+  if (error) throw error
+  return getTodayShortages()
+}
+
+export async function deleteShortage(id: string): Promise<ShortageView[]> {
+  if (!isSupabaseConfigured) {
+    const rows = deleteShortageMock(id)
+    return fromMockShortages(rows)
+  }
+  const { error } = await supabase.from('mungesat').delete().eq('id', id)
+  if (error) throw error
+  return getTodayShortages()
+}
+
 export async function generateOrdersFromShortages(rows: ShortageView[]): Promise<OwnerOrder[]> {
   if (!isSupabaseConfigured) {
     const mockRows: MockMissingItem[] = rows.map((r) => ({
@@ -290,11 +323,25 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
 
     created.push({
       id: created.length + 100,
+      dbId: orderId,
       supplier: items[0].supplierName,
       items: items.map((r) => `${r.suggestedQty} × ${r.productName}${r.urgent ? ' (URGJENT)' : ''}`),
+      status: 'DRAFT',
     })
   }
 
   return created
+}
+
+export async function markOrderAsSent(order: OwnerOrder): Promise<OwnerOrder> {
+  if (!isSupabaseConfigured || !order.dbId) {
+    return { ...order, status: 'SENT' }
+  }
+  const { error } = await supabase
+    .from('orders')
+    .update({ status: 'SENT', sent_at: new Date().toISOString() })
+    .eq('id', order.dbId)
+  if (error) throw error
+  return { ...order, status: 'SENT' }
 }
 

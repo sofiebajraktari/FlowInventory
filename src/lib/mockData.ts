@@ -144,6 +144,25 @@ export function updateSuggestedQty(id: string, delta: number): MissingItem[] {
   return items
 }
 
+export function updateShortageMeta(
+  id: string,
+  patch: { urgent?: boolean; note?: string }
+): MissingItem[] {
+  const items = getShortages()
+  const row = items.find((i) => i.id === id)
+  if (!row) return items
+  if (typeof patch.urgent === 'boolean') row.urgent = patch.urgent
+  if (typeof patch.note === 'string') row.note = patch.note.trim()
+  setShortages(items)
+  return items
+}
+
+export function deleteShortage(id: string): MissingItem[] {
+  const items = getShortages().filter((i) => i.id !== id)
+  setShortages(items)
+  return items
+}
+
 export function buildOrdersFromShortages(rows: MissingItem[]): OwnerOrder[] {
   const groups = new Map<string, MissingItem[]>()
   rows
