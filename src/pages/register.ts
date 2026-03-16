@@ -19,42 +19,85 @@ export function renderRegister(container: HTMLElement): void {
     : ''
 
   container.innerHTML = `
-    <div class="auth-page">
-      <div class="auth-card">
-        <div class="auth-pill-icon" id="auth-pill-wrap">
-          ${pillSvg}
+    <div class="auth-hero">
+      <div class="auth-hero-left">
+        <div class="auth-card">
+          <div class="auth-pill-icon" id="auth-pill-wrap">
+            ${pillSvg}
+          </div>
+          <header class="auth-header">
+            <h1 class="auth-title">FlowInventory</h1>
+            <p class="auth-subtitle">Krijo llogari të re</p>
+          </header>
+          ${demoBanner}
+          <form id="register-form" class="auth-form">
+            <div class="auth-field">
+              <label for="reg-email" class="auth-label">Email</label>
+              <input type="email" id="reg-email" name="email" required placeholder="email@shembull.com" autocomplete="email" class="auth-input" />
+            </div>
+            <div class="auth-field">
+              <label for="reg-password" class="auth-label">Fjalëkalim</label>
+              <input type="password" id="reg-password" name="password" required minlength="6" placeholder="••••••••" autocomplete="new-password" class="auth-input" />
+            </div>
+            <div class="auth-field">
+              <label for="reg-role" class="auth-label">Roli</label>
+              <select id="reg-role" name="role" required class="auth-input">
+                <option value="">Zgjidhni rol</option>
+                <option value="WORKER">Punëtori</option>
+                <option value="OWNER">Pronari</option>
+              </select>
+            </div>
+            <p id="register-error" class="auth-error" aria-live="polite"></p>
+            <button type="submit" id="register-btn" class="auth-primary-button">Regjistrohu</button>
+          </form>
+          <p class="mt-4 text-center text-sm text-slate-500">
+            Ke llogari?
+            <button type="button" id="btn-kycu" class="auth-link bg-none border-none cursor-pointer p-0">
+              Kyçu
+            </button>
+          </p>
         </div>
-        <header class="auth-header">
-          <h1 class="auth-title">FlowInventory</h1>
-          <p class="auth-subtitle">Krijo llogari të re</p>
-        </header>
-        ${demoBanner}
-        <form id="register-form" class="auth-form">
-          <div class="auth-field">
-            <label for="reg-email" class="auth-label">Email</label>
-            <input type="email" id="reg-email" name="email" required placeholder="email@shembull.com" autocomplete="email" class="auth-input" />
-          </div>
-          <div class="auth-field">
-            <label for="reg-password" class="auth-label">Fjalëkalim</label>
-            <input type="password" id="reg-password" name="password" required minlength="6" placeholder="••••••••" autocomplete="new-password" class="auth-input" />
-          </div>
-          <div class="auth-field">
-            <label for="reg-role" class="auth-label">Roli</label>
-            <select id="reg-role" name="role" required class="auth-input">
-              <option value="">Zgjidhni rol</option>
-              <option value="WORKER">Punëtori</option>
-              <option value="OWNER">Pronari</option>
-            </select>
-          </div>
-          <p id="register-error" class="auth-error" aria-live="polite"></p>
-          <button type="submit" id="register-btn" class="auth-primary-button">Regjistrohu</button>
-        </form>
-        <p class="mt-4 text-center text-sm text-slate-500">
-          Ke llogari?
-          <button type="button" id="btn-kycu" class="auth-link bg-none border-none cursor-pointer p-0">
-            Kyçu
-          </button>
+      </div>
+      <div class="auth-hero-right">
+        <h2 class="auth-hero-title">
+          Menaxho <strong>mungesat e barnave</strong><br />që nga regjistrimi i parë
+        </h2>
+        <p class="auth-hero-text">
+          Regjistro llogari për punëtorin dhe pronarin e farmacisë dhe fillo të centralizosh mungesat në një vend të vetëm.
         </p>
+        <div class="auth-hero-features">
+          <div class="auth-hero-feature">
+            <div class="auth-hero-feature-icon">👥</div>
+            <div>
+              <div class="auth-hero-feature-title">Dy role të thjeshta</div>
+              <div class="auth-hero-feature-text">Punëtori shton mungesat, pronari menaxhon porositë.</div>
+            </div>
+          </div>
+          <div class="auth-hero-feature">
+            <div class="auth-hero-feature-icon">⚙️</div>
+            <div>
+              <div class="auth-hero-feature-title">Konfigurim i shpejtë</div>
+              <div class="auth-hero-feature-text">Mjafton një llogari për pronarin dhe një për punëtorin.</div>
+            </div>
+          </div>
+          <div class="auth-hero-feature">
+            <div class="auth-hero-feature-icon">✅</div>
+            <div>
+              <div class="auth-hero-feature-title">Gati për demo</div>
+              <div class="auth-hero-feature-text">Trego fluksin komplet: nga mungesat deri te porosia.</div>
+            </div>
+          </div>
+        </div>
+        <div class="auth-hero-illustration">
+          <div class="auth-hero-illustration-text">
+            Seksion informues për mënyrën si pronari sheh dhe miraton porositë. Mund të zëvendësohet me ilustrim real më vonë.
+          </div>
+          <img
+            src="/images/pharmacist.jpg"
+            alt="Farmacist duke kontrolluar barnat në raft"
+            class="w-40 h-24 rounded-xl border border-sky-300/40 object-cover"
+          />
+        </div>
       </div>
     </div>
   `

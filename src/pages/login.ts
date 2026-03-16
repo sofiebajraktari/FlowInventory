@@ -30,36 +30,79 @@ export function renderLogin(container: HTMLElement): void {
     : ''
 
   container.innerHTML = `
-    <div class="auth-page">
-      <div class="auth-card">
-        <div class="auth-pill-icon" id="auth-pill-wrap">
-          ${pillSvg}
+    <div class="auth-hero">
+      <div class="auth-hero-left">
+        <div class="auth-card">
+          <div class="auth-pill-icon" id="auth-pill-wrap">
+            ${pillSvg}
+          </div>
+          <header class="auth-header">
+            <h1 class="auth-title">FlowInventory</h1>
+            <p class="auth-subtitle">Kyçu në llogarinë tënde</p>
+          </header>
+          ${demoBanner}
+          <form id="login-form" class="auth-form">
+            <div class="auth-field">
+              <label for="email" class="auth-label">Email</label>
+              <input type="email" id="email" name="email" required placeholder="email@shembull.com" autocomplete="email" class="auth-input" />
+            </div>
+            <div class="auth-field">
+              <label for="password" class="auth-label">Fjalëkalim</label>
+              <input type="password" id="password" name="password" required placeholder="••••••••" autocomplete="current-password" class="auth-input" />
+            </div>
+            <p id="login-error" class="auth-error" aria-live="polite"></p>
+            <button type="submit" id="login-btn" class="auth-primary-button">
+              Kyçu
+            </button>
+          </form>
+          <p class="mt-4 text-center text-sm text-slate-500">
+            Nuk ke llogari?
+            <button type="button" id="btn-regjistrohu" class="auth-link bg-none border-none cursor-pointer p-0">
+              Regjistrohu
+            </button>
+          </p>
         </div>
-        <header class="auth-header">
-          <h1 class="auth-title">FlowInventory</h1>
-          <p class="auth-subtitle">Kyçu në llogarinë tënde</p>
-        </header>
-        ${demoBanner}
-        <form id="login-form" class="auth-form">
-          <div class="auth-field">
-            <label for="email" class="auth-label">Email</label>
-            <input type="email" id="email" name="email" required placeholder="email@shembull.com" autocomplete="email" class="auth-input" />
-          </div>
-          <div class="auth-field">
-            <label for="password" class="auth-label">Fjalëkalim</label>
-            <input type="password" id="password" name="password" required placeholder="••••••••" autocomplete="current-password" class="auth-input" />
-          </div>
-          <p id="login-error" class="auth-error" aria-live="polite"></p>
-          <button type="submit" id="login-btn" class="auth-primary-button">
-            Kyçu
-          </button>
-        </form>
-        <p class="mt-4 text-center text-sm text-slate-500">
-          Nuk ke llogari?
-          <button type="button" id="btn-regjistrohu" class="auth-link bg-none border-none cursor-pointer p-0">
-            Regjistrohu
-          </button>
+      </div>
+      <div class="auth-hero-right">
+        <h2 class="auth-hero-title">
+          Menaxhimi i <strong>mungesave të barnave</strong><br />në mënyrë inteligjente
+        </h2>
+        <p class="auth-hero-text">
+          FlowInventory ndihmon farmacitë të regjistrojnë mungesat dhe të krijojnë porosi për furnitorët në sekonda.
         </p>
+        <div class="auth-hero-features">
+          <div class="auth-hero-feature">
+            <div class="auth-hero-feature-icon">↻</div>
+            <div>
+              <div class="auth-hero-feature-title">Realtime Updates</div>
+              <div class="auth-hero-feature-text">Shiko mungesat menjëherë, pa rifreskim të faqes.</div>
+            </div>
+          </div>
+          <div class="auth-hero-feature">
+            <div class="auth-hero-feature-icon">✓</div>
+            <div>
+              <div class="auth-hero-feature-title">Smart Orders</div>
+              <div class="auth-hero-feature-text">Gjenero porosi sipas furnitorit me një klik.</div>
+            </div>
+          </div>
+          <div class="auth-hero-feature">
+            <div class="auth-hero-feature-icon">💬</div>
+            <div>
+              <div class="auth-hero-feature-title">WhatsApp Ready</div>
+              <div class="auth-hero-feature-text">Dërgo porositë direkt në WhatsApp, pa screenshot.</div>
+            </div>
+          </div>
+        </div>
+        <div class="auth-hero-illustration">
+          <div class="auth-hero-illustration-text">
+            Panel orientues për mungesat dhe porositë e fundit. Këtu mund të vendosim një ilustrim real më vonë.
+          </div>
+          <img
+            src="/images/pharmacist.jpg"
+            alt="Farmacist duke kontrolluar barnat në raft"
+            class="w-40 h-24 rounded-xl border border-sky-300/40 object-cover"
+          />
+        </div>
       </div>
     </div>
   `
