@@ -1,16 +1,16 @@
 import { signOut } from '../lib/auth.js'
 import {
-  addShortage,
-  getShortages,
-  searchProducts,
-  type MissingItem,
-  type MockProduct,
-} from '../lib/mockData.js'
+  addMungese,
+  getProducts,
+  getTodayShortages,
+  type ProductView,
+  type ShortageView,
+} from '../lib/data.js'
 
 const logoSmall = `<svg class="w-8 h-8 text-pharm-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 12c0-1.2-.5-2.3-1.4-3.1l-2.1-2.1-2.1 2.1a4.5 4.5 0 01-6.4 0l-2.1-2.1-2.1 2.1A4.5 4.5 0 004.5 12a4.5 4.5 0 001.4 3.2l2.1 2.1 2.1-2.1a4.5 4.5 0 016.4 0l2.1 2.1 2.1-2.1a4.5 4.5 0 001.4-3.2z" /></svg>`
 const iconLogout = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>`
 
-function renderResults(results: MockProduct[]): string {
+function renderResults(results: ProductView[]): string {
   if (!results.length) {
     return `<p class="text-sm text-slate-400">Nuk u gjet asnjë bar me këtë kërkim.</p>`
   }
@@ -23,7 +23,7 @@ function renderResults(results: MockProduct[]): string {
           <button type="button" class="w-full text-left px-3 py-2 hover:bg-pharm-card/70 flex items-center justify-between gap-2 select-product" data-id="${p.id}">
             <div>
               <div class="text-sm text-slate-100">${p.name}</div>
-              <div class="text-xs text-slate-400">Furnitori: ${p.supplier}</div>
+              <div class="text-xs text-slate-400">Furnitori: ${p.supplierName}</div>
             </div>
             <span class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border border-slate-500 text-slate-300">
               ${p.category === 'barna' ? 'Barna' : 'Front'}
@@ -36,7 +36,7 @@ function renderResults(results: MockProduct[]): string {
   `
 }
 
-function renderMissingList(missingItems: MissingItem[]): string {
+function renderMissingList(missingItems: ShortageView[]): string {
   if (!missingItems.length) {
     return `<p class="text-sm text-slate-500">Nuk ka mungesa të regjistruara për sot.</p>`
   }
@@ -47,8 +47,8 @@ function renderMissingList(missingItems: MissingItem[]): string {
           (m) => `
         <li class="flex items-start justify-between gap-3 rounded-lg border border-slate-700/70 bg-pharm-bg/60 px-3 py-2.5">
           <div>
-            <div class="text-sm text-slate-100">${m.product.name}</div>
-            <div class="text-xs text-slate-400">Furnitori: ${m.product.supplier}</div>
+            <div class="text-sm text-slate-100">${m.productName}</div>
+            <div class="text-xs text-slate-400">Furnitori: ${m.supplierName}</div>
             ${
               m.note
                 ? `<div class="mt-0.5 text-xs text-slate-300">Shënim: ${m.note}</div>`
@@ -67,6 +67,8 @@ function renderMissingList(missingItems: MissingItem[]): string {
 }
 
 export function renderMungesat(container: HTMLElement): void {
+  let allProducts: ProductView[] = []
+
   function showToast(message: string): void {
     const existing = document.getElementById('worker-toast')
     if (existing) existing.remove()
@@ -78,8 +80,6 @@ export function renderMungesat(container: HTMLElement): void {
     document.body.appendChild(toast)
     window.setTimeout(() => toast.remove(), 1600)
   }
-
-  const currentItems = getShortages()
 
   container.innerHTML = `
     <div class="min-h-[calc(100vh-2rem)] flex gap-4">
@@ -163,7 +163,7 @@ export function renderMungesat(container: HTMLElement): void {
             <span class="text-xs text-slate-400">${new Date().toLocaleDateString('sq-AL')}</span>
           </div>
           <div id="missing-list">
-            ${renderMissingList(currentItems)}
+            ${renderMissingList([])}
           </div>
         </section>
       </main>
@@ -178,26 +178,41 @@ export function renderMungesat(container: HTMLElement): void {
   const resultsDiv = document.getElementById('search-results') as HTMLDivElement
   const missingListDiv = document.getElementById('missing-list') as HTMLDivElement
 
+  async function refreshMissingList(): Promise<void> {
+    const items = await getTodayShortages()
+    missingListDiv.innerHTML = renderMissingList(items)
+  }
+
   function updateResults() {
-    const q = searchInput.value
-    const matches = searchProducts(q)
+    const q = searchInput.value.toLocaleLowerCase('sq-AL').trim()
+    const matches = !q
+      ? []
+      : allProducts.filter((p) => {
+          if (p.name.toLocaleLowerCase('sq-AL').includes(q)) return true
+          return p.aliases.some((a) => a.toLocaleLowerCase('sq-AL').includes(q))
+        }).slice(0, 8)
     resultsDiv.innerHTML = renderResults(matches)
 
     const buttons = resultsDiv.querySelectorAll<HTMLButtonElement>('button.select-product')
     buttons.forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const id = btn.dataset.id
         const incomingNote = noteInput.value.trim()
         const incomingUrgent = urgentToggle.checked
 
         if (!id) return
-        const nextItems = addShortage(id, incomingUrgent, incomingNote)
+        try {
+          await addMungese(id, incomingUrgent, incomingNote)
+        } catch (error) {
+          showToast('Shtimi dështoi.')
+          return
+        }
 
         searchInput.value = ''
         urgentToggle.checked = false
         noteInput.value = ''
         resultsDiv.innerHTML = ''
-        missingListDiv.innerHTML = renderMissingList(nextItems)
+        await refreshMissingList()
 
         showToast('Mungesa u shtua.')
       })
@@ -205,4 +220,8 @@ export function renderMungesat(container: HTMLElement): void {
   }
 
   searchInput.addEventListener('input', () => updateResults())
+  getProducts().then((products) => {
+    allProducts = products
+  })
+  refreshMissingList()
 }

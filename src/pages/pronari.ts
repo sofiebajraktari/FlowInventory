@@ -1,24 +1,29 @@
 import { signOut } from '../lib/auth.js'
+import { isSupabaseConfigured, supabase } from '../lib/supabase.js'
 import {
   addProduct,
-  buildOrdersFromShortages,
+  generateOrdersFromShortages,
   getProducts,
-  getShortages,
+  getTodayShortages,
   updateSuggestedQty,
-  type MissingItem,
-  type MockProduct,
+  type ProductView,
+  type ShortageView,
   type OwnerOrder,
-} from '../lib/mockData.js'
+} from '../lib/data.js'
 
-const logoSmall = `<svg class="w-8 h-8 text-pharm-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 12c0-1.2-.5-2.3-1.4-3.1l-2.1-2.1-2.1 2.1a4.5 4.5 0 01-6.4 0l-2.1-2.1-2.1 2.1A4.5 4.5 0 004.5 12a4.5 4.5 0 001.4 3.2l2.1 2.1 2.1-2.1a4.5 4.5 0 016.4 0l2.1 2.1 2.1-2.1a4.5 4.5 0 001.4-3.2z" /></svg>`
 const iconLogout = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>`
 
 export function renderPronari(container: HTMLElement): void {
-  let shortages: MissingItem[] = getShortages()
-  let products: MockProduct[] = getProducts()
+  let shortages: ShortageView[] = []
+  let products: ProductView[] = []
   let searchQuery = ''
   let sortBy: 'supplier' | 'name' = 'supplier'
-  let generatedOrders: OwnerOrder[] = buildOrdersFromShortages(shortages)
+  let generatedOrders: OwnerOrder[] = []
+
+  async function reloadShortages(): Promise<void> {
+    shortages = await getTodayShortages()
+    refreshUI()
+  }
 
   function showToast(message: string): void {
     const existing = document.getElementById('owner-toast')
@@ -32,17 +37,17 @@ export function renderPronari(container: HTMLElement): void {
     window.setTimeout(() => toast.remove(), 1800)
   }
 
-  function getFilteredRows(): MissingItem[] {
+  function getFilteredRows(): ShortageView[] {
     const q = searchQuery.toLocaleLowerCase('sq-AL').trim()
     let rows = shortages.filter((s) => s.suggestedQty > 0)
     if (q) {
-      rows = rows.filter((s) => s.product.name.toLocaleLowerCase('sq-AL').includes(q))
+      rows = rows.filter((s) => s.productName.toLocaleLowerCase('sq-AL').includes(q))
     }
     rows.sort((a, b) => {
-      if (sortBy === 'name') return a.product.name.localeCompare(b.product.name, 'sq-AL')
+      if (sortBy === 'name') return a.productName.localeCompare(b.productName, 'sq-AL')
       return (
-        a.product.supplier.localeCompare(b.product.supplier, 'sq-AL') ||
-        a.product.name.localeCompare(b.product.name, 'sq-AL')
+        a.supplierName.localeCompare(b.supplierName, 'sq-AL') ||
+        a.productName.localeCompare(b.productName, 'sq-AL')
       )
     })
     return rows
@@ -70,7 +75,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       .map(
         (s) => `
       <tr class="border-t border-slate-700/60">
-        <td class="px-3 py-2 text-slate-100 text-xs">${s.product.name}</td>
+        <td class="px-3 py-2 text-slate-100 text-xs">${s.productName}</td>
         <td class="px-3 py-2">
           <div class="inline-flex items-center rounded-full border border-slate-600 bg-slate-900/70 px-2 py-1 gap-1">
             <button data-action="decrement" data-id="${s.id}" class="text-slate-300 text-xs px-1 hover:text-white">-</button>
@@ -78,7 +83,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             <button data-action="increment" data-id="${s.id}" class="text-slate-300 text-xs px-1 hover:text-white">+</button>
           </div>
         </td>
-        <td class="px-3 py-2 text-slate-200 text-xs">${s.product.supplier}</td>
+        <td class="px-3 py-2 text-slate-200 text-xs">${s.supplierName}</td>
         <td class="px-3 py-2">
           <div class="flex items-center gap-1">
             ${s.urgent ? '<span class="rounded-full bg-red-500/20 px-2 py-0.5 text-[10px] font-semibold text-red-300">URGJENT</span>' : ''}
@@ -128,7 +133,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
           (p) =>
             `<li class="flex items-center justify-between gap-2 text-[11px] py-1 border-b border-slate-700/40">
               <span class="text-slate-200">${p.name}</span>
-              <span class="text-slate-400">${p.supplier}</span>
+              <span class="text-slate-400">${p.supplierName}</span>
             </li>`
         )
         .join('')
@@ -280,7 +285,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     refreshUI()
   })
 
-  productForm?.addEventListener('submit', (event) => {
+  productForm?.addEventListener('submit', async (event) => {
     event.preventDefault()
     const name = productNameInput?.value ?? ''
     const supplier = productSupplierInput?.value ?? ''
@@ -290,12 +295,12 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       .map((x) => x.trim())
       .filter(Boolean)
 
-    const result = addProduct({ name, supplier, category, aliases })
+    const result = await addProduct({ name, supplier, category, aliases })
     if (!result.ok) {
       showToast(result.message)
       return
     }
-    products = result.products
+    products = await getProducts()
     productForm.reset()
     if (productCategoryInput) productCategoryInput.value = 'barna'
     refreshUI()
@@ -311,13 +316,13 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     const id = btn.dataset.id
 
     if (action === 'increment' && id) {
-      shortages = updateSuggestedQty(id, 1)
+      shortages = await updateSuggestedQty(id, 1)
       refreshUI()
       return
     }
 
     if (action === 'decrement' && id) {
-      shortages = updateSuggestedQty(id, -1)
+      shortages = await updateSuggestedQty(id, -1)
       refreshUI()
       return
     }
@@ -343,11 +348,34 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
   })
 
   const generateBtn = container.querySelector<HTMLButtonElement>('button.bg-emerald-500')
-  generateBtn?.addEventListener('click', () => {
-    generatedOrders = buildOrdersFromShortages(getFilteredRows())
+  generateBtn?.addEventListener('click', async () => {
+    generatedOrders = await generateOrdersFromShortages(getFilteredRows())
     refreshUI()
     showToast('Porositë u gjeneruan sipas furnitorit.')
   })
 
-  refreshUI()
+  Promise.all([getTodayShortages(), getProducts()]).then(([rows, productRows]) => {
+    shortages = rows
+    products = productRows
+    refreshUI()
+  })
+
+  if (isSupabaseConfigured) {
+    const channel = supabase
+      .channel(`owner-shortages-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'mungesat' },
+        () => void reloadShortages()
+      )
+      .subscribe()
+
+    window.addEventListener(
+      'hashchange',
+      () => {
+        supabase.removeChannel(channel)
+      },
+      { once: true }
+    )
+  }
 }
