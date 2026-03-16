@@ -4,15 +4,18 @@ import { renderLogin } from './pages/login.js'
 import { renderRegister } from './pages/register.js'
 import { renderMungesat } from './pages/mungesat.js'
 import { renderPronari } from './pages/pronari.js'
+import { applyStoredTheme, bindThemeToggleButtons } from './lib/theme.js'
 import './style.css'
 
 const app = document.getElementById('app')!
+const THEME_TOGGLE_ID = 'theme-toggle-floating'
 function getRoute(): string {
   const hash = window.location.hash.slice(1) || '/'
   return hash.startsWith('/') ? hash : '/' + hash
 }
 
 async function render(): Promise<void> {
+  applyStoredTheme()
   const route = getRoute()
 
   if (route === '/kycu' || route === '/regjistrohu') {
@@ -25,6 +28,7 @@ async function render(): Promise<void> {
     }
     if (route === '/kycu') renderLogin(app)
     else renderRegister(app)
+    bindThemeToggleButtons(document)
     return
   }
 
@@ -41,6 +45,7 @@ async function render(): Promise<void> {
 
   if (route === '/mungesat') {
     renderMungesat(app)
+    bindThemeToggleButtons(document)
     return
   }
   if (route === '/pronari') {
@@ -49,12 +54,27 @@ async function render(): Promise<void> {
       return
     }
     renderPronari(app)
+    bindThemeToggleButtons(document)
     return
   }
 
   redirectByRole(profile.role)
 }
 
+function ensureThemeToggle(): void {
+  let btn = document.getElementById(THEME_TOGGLE_ID) as HTMLButtonElement | null
+  if (!btn) {
+    btn = document.createElement('button')
+    btn.id = THEME_TOGGLE_ID
+    btn.className =
+      'theme-toggle-chip fixed bottom-4 left-4 z-50 rounded-full px-3 py-2 text-xs font-semibold shadow-lg'
+    btn.setAttribute('data-theme-toggle', '1')
+    document.body.appendChild(btn)
+  }
+  bindThemeToggleButtons(document)
+}
+
 window.addEventListener('hashchange', () => render())
 if (isSupabaseConfigured) supabase.auth.onAuthStateChange(() => render())
+ensureThemeToggle()
 render()

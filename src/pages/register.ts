@@ -2,17 +2,6 @@ import { signUp, redirectByRole } from '../lib/auth.js'
 import { isSupabaseConfigured } from '../lib/supabase.js'
 import type { UserRole } from '../types.js'
 
-const pillSvg = `
-  <svg viewBox="0 0 48 100" fill="none" xmlns="http://www.w3.org/2000/svg" class="auth-pill-svg">
-    <defs>
-      <linearGradient id="pill-shine-2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="white" stop-opacity="0.25"/><stop offset="100%" stop-color="white" stop-opacity="0"/></linearGradient>
-    </defs>
-    <path d="M0 24 A24 24 0 0 1 48 24 L48 50 L0 50 Z" fill="#38bdf8"/>
-    <path d="M0 50 L48 50 L48 76 A24 24 0 0 1 0 76 Z" fill="#ffffff"/>
-    <path d="M0 24 A24 24 0 0 1 48 24 L48 50 L0 50 Z" fill="url(#pill-shine-2)" opacity="0.6"/>
-  </svg>
-`
-
 export function renderRegister(container: HTMLElement): void {
   const demoBanner = !isSupabaseConfigured
     ? '<div class="auth-demo-banner">Modalitet demo – pa backend.</div>'
@@ -22,12 +11,13 @@ export function renderRegister(container: HTMLElement): void {
     <div class="auth-hero">
       <div class="auth-hero-left">
         <div class="auth-card">
-          <div class="auth-pill-icon" id="auth-pill-wrap">
-            ${pillSvg}
-          </div>
           <header class="auth-header">
-            <h1 class="auth-title">FlowInventory</h1>
-            <p class="auth-subtitle">Krijo llogari të re</p>
+            <div class="flex items-center justify-between mb-2">
+              <p class="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-700">FlowInventory</p>
+              <button type="button" data-theme-toggle="1" class="theme-toggle-chip rounded-full px-2.5 py-1 text-[11px] font-semibold"></button>
+            </div>
+            <h1 class="auth-title">Krijo llogari të re</h1>
+            <p class="auth-subtitle">Vendos rolin dhe nis përdorimin e panelit</p>
           </header>
           ${demoBanner}
           <form id="register-form" class="auth-form">
@@ -60,37 +50,37 @@ export function renderRegister(container: HTMLElement): void {
       </div>
       <div class="auth-hero-right">
         <h2 class="auth-hero-title">
-          Menaxho <strong>mungesat e barnave</strong><br />që nga regjistrimi i parë
+          Krijo ekipin tënd të farmacisë<br />me <strong>dy role të qarta</strong>
         </h2>
         <p class="auth-hero-text">
-          Regjistro llogari për punëtorin dhe pronarin e farmacisë dhe fillo të centralizosh mungesat në një vend të vetëm.
+          Punëtori regjistron mungesat, pronari gjeneron porositë. Fluks i thjeshtë, i shpejtë dhe i kontrolluar.
         </p>
         <div class="auth-hero-features">
           <div class="auth-hero-feature">
             <div class="auth-hero-feature-icon">👥</div>
             <div>
               <div class="auth-hero-feature-title">Dy role të thjeshta</div>
-              <div class="auth-hero-feature-text">Punëtori shton mungesat, pronari menaxhon porositë.</div>
+              <div class="auth-hero-feature-text">Akses i qartë për punëtorin dhe pronarin.</div>
             </div>
           </div>
           <div class="auth-hero-feature">
             <div class="auth-hero-feature-icon">⚙️</div>
             <div>
               <div class="auth-hero-feature-title">Konfigurim i shpejtë</div>
-              <div class="auth-hero-feature-text">Mjafton një llogari për pronarin dhe një për punëtorin.</div>
+              <div class="auth-hero-feature-text">Regjistro përdoruesit dhe fillo përdorimin menjëherë.</div>
             </div>
           </div>
           <div class="auth-hero-feature">
             <div class="auth-hero-feature-icon">✅</div>
             <div>
               <div class="auth-hero-feature-title">Gati për demo</div>
-              <div class="auth-hero-feature-text">Trego fluksin komplet: nga mungesat deri te porosia.</div>
+              <div class="auth-hero-feature-text">Pamje profesionale për prezantim te menaxhmenti.</div>
             </div>
           </div>
         </div>
         <div class="auth-hero-illustration">
           <div class="auth-hero-illustration-text">
-            Seksion informues për mënyrën si pronari sheh dhe miraton porositë. Mund të zëvendësohet me ilustrim real më vonë.
+            I njëjti sistem i unifikuar për regjistrim, mungesa dhe porosi.
           </div>
           <img
             src="/images/pharmacist.jpg"
@@ -105,12 +95,10 @@ export function renderRegister(container: HTMLElement): void {
   const form = document.getElementById('register-form') as HTMLFormElement
   const errorEl = document.getElementById('register-error')!
   const btn = document.getElementById('register-btn') as HTMLButtonElement
-  const pillWrap = document.getElementById('auth-pill-wrap')!
   const btnKycu = document.getElementById('btn-kycu')!
 
   btnKycu.addEventListener('click', () => {
-    pillWrap.classList.add('pill-go')
-    setTimeout(() => { window.location.hash = '#/kycu' }, 700)
+    window.location.hash = '#/kycu'
   })
 
   form.addEventListener('submit', async (e) => {

@@ -1,17 +1,6 @@
 import { signIn, redirectByRole } from '../lib/auth.js'
 import { isSupabaseConfigured } from '../lib/supabase.js'
 
-const pillSvg = `
-  <svg viewBox="0 0 48 100" fill="none" xmlns="http://www.w3.org/2000/svg" class="auth-pill-svg">
-    <defs>
-      <linearGradient id="pill-shine-1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="white" stop-opacity="0.25"/><stop offset="100%" stop-color="white" stop-opacity="0"/></linearGradient>
-    </defs>
-    <path d="M0 24 A24 24 0 0 1 48 24 L48 50 L0 50 Z" fill="#38bdf8"/>
-    <path d="M0 50 L48 50 L48 76 A24 24 0 0 1 0 76 Z" fill="#ffffff"/>
-    <path d="M0 24 A24 24 0 0 1 48 24 L48 50 L0 50 Z" fill="url(#pill-shine-1)" opacity="0.6"/>
-  </svg>
-`
-
 export function renderLogin(container: HTMLElement): void {
   const demoBanner = !isSupabaseConfigured
     ? `
@@ -33,12 +22,13 @@ export function renderLogin(container: HTMLElement): void {
     <div class="auth-hero">
       <div class="auth-hero-left">
         <div class="auth-card">
-          <div class="auth-pill-icon" id="auth-pill-wrap">
-            ${pillSvg}
-          </div>
           <header class="auth-header">
-            <h1 class="auth-title">FlowInventory</h1>
-            <p class="auth-subtitle">Kyçu në llogarinë tënde</p>
+            <div class="flex items-center justify-between mb-2">
+              <p class="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-700">FlowInventory</p>
+              <button type="button" data-theme-toggle="1" class="theme-toggle-chip rounded-full px-2.5 py-1 text-[11px] font-semibold"></button>
+            </div>
+            <h1 class="auth-title">Kyçu në llogarinë tënde</h1>
+            <p class="auth-subtitle">Paneli i menaxhimit të mungesave për farmaci</p>
           </header>
           ${demoBanner}
           <form id="login-form" class="auth-form">
@@ -65,37 +55,37 @@ export function renderLogin(container: HTMLElement): void {
       </div>
       <div class="auth-hero-right">
         <h2 class="auth-hero-title">
-          Menaxhimi i <strong>mungesave të barnave</strong><br />në mënyrë inteligjente
+          Menaxho farmacinë me<br /><strong>rrjedhë të qartë pune</strong>
         </h2>
         <p class="auth-hero-text">
-          FlowInventory ndihmon farmacitë të regjistrojnë mungesat dhe të krijojnë porosi për furnitorët në sekonda.
+          Nga regjistrimi i mungesës te porosia për furnitor, gjithçka ndodh në një vend dhe në kohë reale.
         </p>
         <div class="auth-hero-features">
           <div class="auth-hero-feature">
             <div class="auth-hero-feature-icon">↻</div>
             <div>
-              <div class="auth-hero-feature-title">Realtime Updates</div>
-              <div class="auth-hero-feature-text">Shiko mungesat menjëherë, pa rifreskim të faqes.</div>
+              <div class="auth-hero-feature-title">Përditësim i menjëhershëm</div>
+              <div class="auth-hero-feature-text">Punëtori dhe pronari shohin të njëjtat të dhëna live.</div>
             </div>
           </div>
           <div class="auth-hero-feature">
             <div class="auth-hero-feature-icon">✓</div>
             <div>
-              <div class="auth-hero-feature-title">Smart Orders</div>
-              <div class="auth-hero-feature-text">Gjenero porosi sipas furnitorit me një klik.</div>
+              <div class="auth-hero-feature-title">Porosi sipas furnitorit</div>
+              <div class="auth-hero-feature-text">Gjenerim i shpejtë i porosive nga mungesat e ditës.</div>
             </div>
           </div>
           <div class="auth-hero-feature">
             <div class="auth-hero-feature-icon">💬</div>
             <div>
-              <div class="auth-hero-feature-title">WhatsApp Ready</div>
-              <div class="auth-hero-feature-text">Dërgo porositë direkt në WhatsApp, pa screenshot.</div>
+              <div class="auth-hero-feature-title">Gati për komunikim</div>
+              <div class="auth-hero-feature-text">Reciptat kopjohen lehtë për dërgim te furnitorët.</div>
             </div>
           </div>
         </div>
         <div class="auth-hero-illustration">
           <div class="auth-hero-illustration-text">
-            Panel orientues për mungesat dhe porositë e fundit. Këtu mund të vendosim një ilustrim real më vonë.
+            Pamje moderne për ekipin tënd: fokus te shpejtësia, qartësia dhe vendimet e sakta.
           </div>
           <img
             src="/images/pharmacist.jpg"
@@ -110,14 +100,10 @@ export function renderLogin(container: HTMLElement): void {
   const form = document.getElementById('login-form') as HTMLFormElement
   const errorEl = document.getElementById('login-error')!
   const btn = document.getElementById('login-btn') as HTMLButtonElement
-  const pillWrap = document.getElementById('auth-pill-wrap')!
   const btnRegjistrohu = document.getElementById('btn-regjistrohu')!
 
   btnRegjistrohu.addEventListener('click', () => {
-    pillWrap.classList.add('pill-go')
-    setTimeout(() => {
-      window.location.hash = '#/regjistrohu'
-    }, 700)
+    window.location.hash = '#/regjistrohu'
   })
 
   form.addEventListener('submit', async (e) => {
