@@ -9,6 +9,8 @@ const MOCK_STORAGE_KEY = 'flowinventory_demo_user'
 export interface MockUser {
   email: string
   role: UserRole
+  firstName?: string
+  lastName?: string
 }
 
 export function getMockUser(): MockUser | null {

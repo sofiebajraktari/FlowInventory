@@ -11,6 +11,7 @@ const logoSmall = `<svg class="w-8 h-8 text-pharm-primary shrink-0" fill="none" 
 const iconLogout = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>`
 const iconBolt = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>`
 const iconClock = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v5l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`
+type WorkerSection = 'mungesat' | 'porosite' | 'import' | 'settings'
 
 function renderResults(results: ProductView[]): string {
   if (!results.length) {
@@ -68,7 +69,12 @@ function renderMissingList(missingItems: ShortageView[]): string {
   `
 }
 
-export function renderMungesat(container: HTMLElement): void {
+export function renderMungesat(container: HTMLElement, routeSection = 'mungesat'): void {
+  const section: WorkerSection =
+    routeSection === 'porosite' || routeSection === 'import' || routeSection === 'settings'
+      ? routeSection
+      : 'mungesat'
+  const active = (key: WorkerSection): string => (section === key ? 'premium-nav-link active' : 'premium-nav-link')
   let allProducts: ProductView[] = []
 
   function showToast(message: string): void {
@@ -91,23 +97,23 @@ export function renderMungesat(container: HTMLElement): void {
             <div class="w-9 h-9 rounded-2xl bg-white flex items-center justify-center shadow">
               <div class="w-5 h-8 rounded-full bg-linear-to-b from-sky-400 to-white"></div>
             </div>
-            <span class="text-sm font-semibold text-white">FlowInventory</span>
+            <span class="text-sm font-semibold text-slate-900">FlowInventory</span>
           </div>
           <nav class="space-y-1 text-sm">
-            <a class="premium-nav-link active">
+            <a href="#/mungesat/mungesat" class="${active('mungesat')}">
               <span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
               Mungesat
             </a>
-            <a class="premium-nav-link">Porositë</a>
-            <a class="premium-nav-link">Import</a>
-            <a class="premium-nav-link">Settings</a>
+            <a href="#/mungesat/porosite" class="${active('porosite')}">Porositë</a>
+            <a href="#/mungesat/import" class="${active('import')}">Import</a>
+            <a href="#/mungesat/settings" class="${active('settings')}">Settings</a>
           </nav>
         </div>
-        <div class="flex items-center gap-3 rounded-2xl bg-white/10 border border-white/20 px-3 py-2.5">
+        <div class="flex items-center gap-3 rounded-2xl bg-white/90 border border-sky-100 px-3 py-2.5 shadow-sm">
           <div class="w-9 h-9 rounded-full bg-sky-200 text-sky-900 flex items-center justify-center text-sm font-semibold">P</div>
           <div class="text-xs">
-            <div class="text-white font-medium">Punëtor</div>
-            <div class="text-sky-100/80 text-[11px]">Worker</div>
+            <div class="text-slate-900 font-medium">Punëtor</div>
+            <div class="text-slate-500 text-[11px]">Worker</div>
           </div>
         </div>
       </aside>
@@ -117,8 +123,16 @@ export function renderMungesat(container: HTMLElement): void {
           <div class="flex items-center gap-3">
             ${logoSmall}
             <div>
-              <p class="text-xs uppercase tracking-wide text-slate-500">Mungesat</p>
-              <h1 class="text-lg md:text-xl font-semibold text-slate-900">Shto mungesa shpejt për sot</h1>
+              <p class="text-xs uppercase tracking-wide text-slate-500">${section === 'mungesat' ? 'Mungesat' : section === 'porosite' ? 'Porositë' : section === 'import' ? 'Import' : 'Settings'}</p>
+              <h1 class="text-lg md:text-xl font-semibold text-slate-900">${
+                section === 'mungesat'
+                  ? 'Shto mungesa shpejt për sot'
+                  : section === 'porosite'
+                    ? 'Porositë janë vetëm për pronarin'
+                    : section === 'import'
+                      ? 'Import është vetëm për pronarin'
+                      : 'Konfigurimet e punëtorit'
+              }</h1>
             </div>
           </div>
           <div class="flex items-center gap-2">
@@ -130,7 +144,7 @@ export function renderMungesat(container: HTMLElement): void {
           </div>
         </header>
 
-        <section class="grid gap-3 md:grid-cols-3 mb-4">
+        <section class="${section === 'mungesat' ? '' : 'hidden '}grid gap-3 md:grid-cols-3 mb-4">
           <div class="premium-kpi p-3">
             <p class="text-[11px] uppercase tracking-wide text-sky-700">Status</p>
             <p id="worker-stat-total" class="mt-1 text-xl font-semibold text-slate-800">0</p>
@@ -148,7 +162,7 @@ export function renderMungesat(container: HTMLElement): void {
           </div>
         </section>
 
-        <section class="grid gap-4 lg:grid-cols-[minmax(0,1.8fr)_minmax(0,1.1fr)]">
+        <section class="${section === 'mungesat' ? '' : 'hidden '}grid gap-4 lg:grid-cols-[minmax(0,1.8fr)_minmax(0,1.1fr)]">
           <div class="premium-card p-5">
             <h2 class="text-base font-semibold text-slate-900 mb-1">Shto mungesë bari</h2>
             <p class="text-xs text-slate-500 mb-4">
@@ -190,7 +204,7 @@ export function renderMungesat(container: HTMLElement): void {
           </div>
         </section>
 
-        <section class="premium-card mt-4 p-5">
+        <section class="${section === 'mungesat' ? '' : 'hidden '}premium-card mt-4 p-5">
           <div class="flex items-center justify-between mb-2">
             <h2 class="text-base font-semibold text-slate-900">Mungesat e sotme</h2>
             <span class="text-xs text-slate-500">${new Date().toLocaleDateString('sq-AL')}</span>
@@ -198,6 +212,14 @@ export function renderMungesat(container: HTMLElement): void {
           <div id="missing-list">
             ${renderMissingList([])}
           </div>
+        </section>
+
+        <section class="${section === 'mungesat' ? 'hidden ' : ''}premium-card mt-4 p-6">
+          <h2 class="text-lg font-semibold text-slate-900 mb-2">Qasje e kufizuar për punëtorin</h2>
+          <p class="text-sm text-slate-600">
+            Sipas rolit në projekt, punëtori përdor vetëm faqen e mungesave. Seksioni
+            <strong> "${section}"</strong> menaxhohet nga pronari te paneli <code>#/pronari</code>.
+          </p>
         </section>
       </main>
     </div>

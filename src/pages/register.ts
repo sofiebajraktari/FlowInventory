@@ -21,6 +21,16 @@ export function renderRegister(container: HTMLElement): void {
           </header>
           ${demoBanner}
           <form id="register-form" class="auth-form">
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div class="auth-field">
+                <label for="reg-first-name" class="auth-label">Emri</label>
+                <input type="text" id="reg-first-name" name="firstName" required placeholder="Emri" autocomplete="given-name" class="auth-input" />
+              </div>
+              <div class="auth-field">
+                <label for="reg-last-name" class="auth-label">Mbiemri</label>
+                <input type="text" id="reg-last-name" name="lastName" required placeholder="Mbiemri" autocomplete="family-name" class="auth-input" />
+              </div>
+            </div>
             <div class="auth-field">
               <label for="reg-email" class="auth-label">Email</label>
               <input type="email" id="reg-email" name="email" required placeholder="email@shembull.com" autocomplete="email" class="auth-input" />
@@ -105,12 +115,18 @@ export function renderRegister(container: HTMLElement): void {
     e.preventDefault()
     errorEl.textContent = ''
     btn.disabled = true
-    const email = (form.email as HTMLInputElement).value.trim()
-    const password = (form.password as HTMLInputElement).value
+    const firstNameEl = form.querySelector('[name="firstName"]') as HTMLInputElement | null
+    const lastNameEl = form.querySelector('[name="lastName"]') as HTMLInputElement | null
+    const emailEl = form.querySelector('[name="email"]') as HTMLInputElement | null
+    const passwordEl = form.querySelector('[name="password"]') as HTMLInputElement | null
+    const firstName = (firstNameEl?.value ?? '').trim()
+    const lastName = (lastNameEl?.value ?? '').trim()
+    const email = (emailEl?.value ?? '').trim()
+    const password = passwordEl?.value ?? ''
     const roleEl = form.querySelector('[name="role"]') as HTMLSelectElement | null
     const role = (roleEl?.value ?? '') as UserRole
     try {
-      const result = await signUp(email, password, role)
+      const result = await signUp(email, password, role, firstName, lastName)
       redirectByRole(result.role)
     } catch (err) {
       errorEl.textContent = (err instanceof Error ? err.message : 'Regjistrimi dështoi.')

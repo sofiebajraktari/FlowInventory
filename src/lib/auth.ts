@@ -34,13 +34,34 @@ export async function signIn(email: string, password: string): Promise<Profile> 
   return profile
 }
 
-export async function signUp(email: string, password: string, role: UserRole): Promise<{ role: UserRole }> {
+export async function signUp(
+  email: string,
+  password: string,
+  role: UserRole,
+  firstName: string,
+  lastName: string
+): Promise<{ role: UserRole }> {
   if (!role || (role !== 'OWNER' && role !== 'WORKER')) throw new Error('Zgjidhni rol: Pronari ose Punëtori.')
+  if (!firstName.trim() || !lastName.trim()) throw new Error('Emri dhe mbiemri janë të detyrueshëm.')
   if (!isSupabaseConfigured) {
-    setMockUser({ email: email.trim(), role })
+    setMockUser({
+      email: email.trim(),
+      role,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+    })
     return { role }
   }
-  const { data: { user }, error: authError } = await supabase.auth.signUp({ email, password })
+  const { data: { user }, error: authError } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+      },
+    },
+  })
   if (authError) throw authError
   if (!user) throw new Error('Regjistrimi dështoi.')
   const { error: profileError } = await supabase.from('profiles').insert({ id: user.id, role })

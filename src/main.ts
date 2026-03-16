@@ -9,6 +9,11 @@ import './style.css'
 
 const app = document.getElementById('app')!
 const THEME_TOGGLE_ID = 'theme-toggle-floating'
+
+function routeSection(route: string): string | null {
+  const parts = route.split('/').filter(Boolean)
+  return parts.length >= 2 ? parts[1] : null
+}
 function getRoute(): string {
   const hash = window.location.hash.slice(1) || '/'
   return hash.startsWith('/') ? hash : '/' + hash
@@ -43,17 +48,19 @@ async function render(): Promise<void> {
     return
   }
 
-  if (route === '/mungesat') {
-    renderMungesat(app)
+  if (route === '/mungesat' || route.startsWith('/mungesat/')) {
+    const section = routeSection(route) ?? 'mungesat'
+    renderMungesat(app, section)
     bindThemeToggleButtons(document)
     return
   }
-  if (route === '/pronari') {
+  if (route === '/pronari' || route.startsWith('/pronari/')) {
     if (profile.role !== 'OWNER') {
       window.location.hash = '#/mungesat'
       return
     }
-    renderPronari(app)
+    const section = routeSection(route) ?? 'dashboard'
+    renderPronari(app, section)
     bindThemeToggleButtons(document)
     return
   }
