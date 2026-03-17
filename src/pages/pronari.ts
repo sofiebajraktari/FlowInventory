@@ -6,6 +6,7 @@ import {
   addProduct,
   deleteShortage,
   generateOrdersFromShortages,
+  getRecentOrders,
   getProducts,
   getTodayShortages,
   markOrderAsSent,
@@ -1108,11 +1109,14 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     showToast('Porositë u gjeneruan sipas furnitorit.')
   })
 
-  Promise.all([getTodayShortages(), getProducts(), loadAccountInfo()]).then(([rows, productRows]) => {
-    shortages = rows
-    products = productRows
-    refreshUI()
-  })
+  Promise.all([getTodayShortages(), getProducts(), loadAccountInfo(), getRecentOrders()]).then(
+    ([rows, productRows, _account, recentOrders]) => {
+      shortages = rows
+      products = productRows
+      generatedOrders = recentOrders
+      refreshUI()
+    }
+  )
 
   if (isSupabaseConfigured) {
     const channel = supabase

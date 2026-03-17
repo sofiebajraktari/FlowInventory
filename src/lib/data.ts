@@ -49,6 +49,14 @@ function todayIso(): string {
   return `${y}-${m}-${day}`
 }
 
+function stableOrderUiId(id: string, fallback: number): number {
+  const compact = (id ?? '').replace(/-/g, '')
+  const head = compact.slice(0, 8)
+  const parsed = Number.parseInt(head, 16)
+  if (Number.isFinite(parsed) && parsed > 0) return (parsed % 900000) + 100000
+  return fallback
+}
+
 function fromMockShortages(rows: MockMissingItem[]): ShortageView[] {
   return rows.map((r) => ({
     id: r.id,
@@ -322,7 +330,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     await supabase.from('orders').update({ receipt_text: receipt }).eq('id', orderId)
 
     created.push({
-      id: created.length + 100,
+      id: stableOrderUiId(orderId, created.length + 100),
       dbId: orderId,
       supplier: items[0].supplierName,
       items: items.map((r) => `${r.suggestedQty} × ${r.productName}${r.urgent ? ' (URGJENT)' : ''}`),
@@ -331,6 +339,35 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
   }
 
   return created
+}
+
+export async function getRecentOrders(limit = 20): Promise<OwnerOrder[]> {
+  if (!isSupabaseConfigured) return []
+
+  const { data, error } = await supabase
+    .from('orders')
+    .select('id,status,suppliers(name),order_items(final_qty,suggested_qty,products(name))')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error || !data) return []
+
+  return data.map((row: any, idx: number) => {
+    const orderItems = Array.isArray(row.order_items) ? row.order_items : []
+    const items = orderItems.map((it: any) => {
+      const qty = Number(it.final_qty ?? it.suggested_qty ?? 1)
+      const productName = it.products?.name ?? 'Produkt'
+      return `${qty} × ${productName}`
+    })
+    const dbId = String(row.id)
+    return {
+      id: stableOrderUiId(dbId, 1000 + idx),
+      dbId,
+      supplier: row.suppliers?.name ?? 'Pa furnitor',
+      items,
+      status: row.status === 'SENT' ? 'SENT' : 'DRAFT',
+    } satisfies OwnerOrder
+  })
 }
 
 export async function markOrderAsSent(order: OwnerOrder): Promise<OwnerOrder> {
