@@ -1,23 +1,17 @@
 import { signIn, redirectByRole } from '../lib/auth.js'
-import { isSupabaseConfigured } from '../lib/supabase.js'
+
+function mapLoginError(err: unknown): string {
+  const fallback = 'Kyçja dështoi. Provoni përsëri.'
+  if (!(err instanceof Error)) return fallback
+  const msg = err.message || fallback
+  const lower = msg.toLowerCase()
+  if (lower.includes('invalid login credentials')) return 'Email ose fjalëkalim i pasaktë.'
+  if (lower.includes('email not confirmed')) return 'Email nuk është konfirmuar ende.'
+  if (lower.includes('too many requests')) return 'Shumë tentativa. Provo pas pak.'
+  return msg
+}
 
 export function renderLogin(container: HTMLElement): void {
-  const demoBanner = !isSupabaseConfigured
-    ? `
-      <div class="auth-demo-banner">
-        <strong>Demo</strong> – zgjidhni rol, çfarëdo email/fjalëkalim.
-      </div>
-      <div class="auth-field">
-        <label for="demo-role" class="auth-label">Roli (demo)</label>
-        <select id="demo-role" name="demo-role" class="auth-input">
-          <option value="">Zgjidhni</option>
-          <option value="WORKER">Punëtori</option>
-          <option value="OWNER">Pronari</option>
-        </select>
-      </div>
-    `
-    : ''
-
   container.innerHTML = `
     <div class="auth-hero">
       <div class="auth-hero-left">
@@ -30,7 +24,6 @@ export function renderLogin(container: HTMLElement): void {
             <h1 class="auth-title">Kyçu në llogarinë tënde</h1>
             <p class="auth-subtitle">Paneli i menaxhimit të mungesave për farmaci</p>
           </header>
-          ${demoBanner}
           <form id="login-form" class="auth-form">
             <div class="auth-field">
               <label for="email" class="auth-label">Email</label>
@@ -87,11 +80,9 @@ export function renderLogin(container: HTMLElement): void {
           <div class="auth-hero-illustration-text">
             Pamje moderne për ekipin tënd: fokus te shpejtësia, qartësia dhe vendimet e sakta.
           </div>
-          <img
-            src="/images/pharmacist.jpg"
-            alt="Farmacist duke kontrolluar barnat në raft"
-            class="w-40 h-24 rounded-xl border border-sky-300/40 object-cover"
-          />
+          <div class="w-40 h-24 rounded-xl border border-sky-300/40 bg-white/70 grid place-items-center text-xs text-slate-600">
+            Farmaci · Workflow live
+          </div>
         </div>
       </div>
     </div>
@@ -117,7 +108,7 @@ export function renderLogin(container: HTMLElement): void {
       const profile = await signIn(email, password)
       redirectByRole(profile.role)
     } catch (err) {
-      errorEl.textContent = (err instanceof Error ? err.message : 'Kyçja dështoi. Provoni përsëri.')
+      errorEl.textContent = mapLoginError(err)
       btn.disabled = false
     }
   })

@@ -22,6 +22,20 @@ function getRoute(): string {
 async function render(): Promise<void> {
   applyStoredTheme()
   const route = getRoute()
+  if (!isSupabaseConfigured) {
+    app.innerHTML = `
+      <div class="min-h-[calc(100vh-2rem)] flex items-center justify-center p-4">
+        <div class="w-full max-w-lg rounded-2xl border border-rose-200 bg-rose-50 p-6 shadow-sm">
+          <h1 class="text-lg font-semibold text-rose-900">Supabase nuk është konfiguruar</h1>
+          <p class="mt-2 text-sm text-rose-800">
+            Për ta përdorur aplikacionin, vendos variablat <code>VITE_SUPABASE_URL</code> dhe
+            <code>VITE_SUPABASE_ANON_KEY</code> në <code>.env</code>, pastaj rifillo app-in.
+          </p>
+        </div>
+      </div>
+    `
+    return
+  }
 
   if (route === '/kycu' || route === '/regjistrohu') {
     if (await hasSession()) {
@@ -68,6 +82,24 @@ async function render(): Promise<void> {
   redirectByRole(profile.role)
 }
 
+function renderWithGuard(): void {
+  render().catch((error: unknown) => {
+    console.error('Render error:', error)
+    const message = error instanceof Error ? error.message : 'Gabim i panjohur gjatë ngarkimit.'
+    app.innerHTML = `
+      <div class="min-h-[calc(100vh-2rem)] flex items-center justify-center p-4">
+        <div class="w-full max-w-lg rounded-2xl border border-rose-200 bg-rose-50 p-6 shadow-sm">
+          <h1 class="text-lg font-semibold text-rose-900">Gabim gjatë ngarkimit</h1>
+          <p class="mt-2 text-sm text-rose-800">${message}</p>
+          <p class="mt-2 text-xs text-rose-700">
+            Kontrollo <code>.env</code> dhe rifillo serverin me <code>npm run dev</code>.
+          </p>
+        </div>
+      </div>
+    `
+  })
+}
+
 function ensureThemeToggle(): void {
   let btn = document.getElementById(THEME_TOGGLE_ID) as HTMLButtonElement | null
   if (!btn) {
@@ -81,7 +113,7 @@ function ensureThemeToggle(): void {
   bindThemeToggleButtons(document)
 }
 
-window.addEventListener('hashchange', () => render())
-if (isSupabaseConfigured) supabase.auth.onAuthStateChange(() => render())
+window.addEventListener('hashchange', () => renderWithGuard())
+if (isSupabaseConfigured) supabase.auth.onAuthStateChange(() => renderWithGuard())
 ensureThemeToggle()
-render()
+renderWithGuard()

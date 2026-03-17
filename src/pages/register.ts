@@ -1,12 +1,22 @@
 import { signUp, redirectByRole } from '../lib/auth.js'
-import { isSupabaseConfigured } from '../lib/supabase.js'
 import type { UserRole } from '../types.js'
 
-export function renderRegister(container: HTMLElement): void {
-  const demoBanner = !isSupabaseConfigured
-    ? '<div class="auth-demo-banner">Modalitet demo – pa backend.</div>'
-    : ''
+function mapRegisterError(err: unknown): string {
+  const fallback = 'Regjistrimi dështoi.'
+  if (!(err instanceof Error)) return fallback
+  const msg = err.message || fallback
+  const lower = msg.toLowerCase()
 
+  if (lower.includes('email rate limit exceeded')) {
+    return 'Keni bërë shumë tentativa me email. Prit 1-2 minuta, pastaj provo përsëri ose kyçu nëse llogaria është krijuar.'
+  }
+  if (lower.includes('already registered') || lower.includes('already been registered')) {
+    return 'Ky email ekziston. Provo Kyçu.'
+  }
+  return msg
+}
+
+export function renderRegister(container: HTMLElement): void {
   container.innerHTML = `
     <div class="auth-hero">
       <div class="auth-hero-left">
@@ -19,7 +29,6 @@ export function renderRegister(container: HTMLElement): void {
             <h1 class="auth-title">Krijo llogari të re</h1>
             <p class="auth-subtitle">Vendos rolin dhe nis përdorimin e panelit</p>
           </header>
-          ${demoBanner}
           <form id="register-form" class="auth-form">
             <div class="grid gap-3 sm:grid-cols-2">
               <div class="auth-field">
@@ -92,11 +101,9 @@ export function renderRegister(container: HTMLElement): void {
           <div class="auth-hero-illustration-text">
             I njëjti sistem i unifikuar për regjistrim, mungesa dhe porosi.
           </div>
-          <img
-            src="/images/pharmacist.jpg"
-            alt="Farmacist duke kontrolluar barnat në raft"
-            class="w-40 h-24 rounded-xl border border-sky-300/40 object-cover"
-          />
+          <div class="w-40 h-24 rounded-xl border border-sky-300/40 bg-white/70 grid place-items-center text-xs text-slate-600">
+            Farmaci · Setup i shpejtë
+          </div>
         </div>
       </div>
     </div>
@@ -127,9 +134,17 @@ export function renderRegister(container: HTMLElement): void {
     const role = (roleEl?.value ?? '') as UserRole
     try {
       const result = await signUp(email, password, role, firstName, lastName)
+      if (result.emailConfirmationRequired) {
+        errorEl.textContent = 'Llogaria u krijua. Verifiko emailin, pastaj kyçu.'
+        btn.disabled = false
+        window.setTimeout(() => {
+          window.location.hash = '#/kycu'
+        }, 1200)
+        return
+      }
       redirectByRole(result.role)
     } catch (err) {
-      errorEl.textContent = (err instanceof Error ? err.message : 'Regjistrimi dështoi.')
+      errorEl.textContent = mapRegisterError(err)
       btn.disabled = false
     }
   })

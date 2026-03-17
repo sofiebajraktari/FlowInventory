@@ -5,14 +5,14 @@ const supabaseAnonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY ?? ''
 
 const hasSupabase = Boolean(supabaseUrl && supabaseAnonKey)
 if (!hasSupabase) {
-  console.warn('Supabase: Mungojnë VITE_SUPABASE_URL ose VITE_SUPABASE_ANON_KEY. Duke përdorur modalitet demo (pa backend).')
+  console.warn('Supabase: Mungojnë VITE_SUPABASE_URL ose VITE_SUPABASE_ANON_KEY.')
 }
 
 let client: SupabaseClient
 if (hasSupabase) {
   client = createClient(supabaseUrl, supabaseAnonKey)
 } else {
-  // Dummy klient vetëm për të kënaqur tipizimin; nuk përdoret në modalitetin demo.
+  // Dummy klient vetëm për të kënaqur tipizimin; nuk përdoret kur mungon konfigurimi.
   client = {} as SupabaseClient
 }
 
