@@ -19,6 +19,7 @@ import {
 const iconLogout = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>`
 const iconTrend = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 17l4-4 4 4 5-5M3 3v18h18" /></svg>`
 const iconBox = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" /></svg>`
+const SUPPLIER_PHONE_STORAGE_KEY = 'flowinventory_supplier_phones'
 type OwnerSection = 'dashboard' | 'mungesat' | 'porosite' | 'import' | 'settings'
 
 export function renderPronari(container: HTMLElement, routeSection = 'dashboard'): void {
@@ -127,6 +128,63 @@ export function renderPronari(container: HTMLElement, routeSection = 'dashboard'
 
   function parseCategory(raw: string): 'barna' | 'front' {
     return raw.trim().toLocaleLowerCase('sq-AL') === 'front' ? 'front' : 'barna'
+  }
+
+  function getSupplierPhones(): Record<string, string> {
+    try {
+      const raw = localStorage.getItem(SUPPLIER_PHONE_STORAGE_KEY)
+      return raw ? (JSON.parse(raw) as Record<string, string>) : {}
+    } catch {
+      return {}
+    }
+  }
+
+  function setSupplierPhones(map: Record<string, string>): void {
+    localStorage.setItem(SUPPLIER_PHONE_STORAGE_KEY, JSON.stringify(map))
+  }
+
+  function normalizePhone(raw: string): string {
+    return raw.replace(/[^\d]/g, '')
+  }
+
+  function openWhatsAppPhoneModal(supplier: string, initial = ''): Promise<string | null> {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div')
+      overlay.className = 'fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4'
+      overlay.innerHTML = `
+        <div class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+          <h3 class="text-lg font-semibold text-slate-900 mb-1">Numri i WhatsApp</h3>
+          <p class="text-sm text-slate-600 mb-4">
+            Shkruaj numrin për furnitorin <strong>${supplier}</strong> (shembull: 38344111222).
+          </p>
+          <label class="text-sm text-slate-700 block">
+            Numri
+            <input id="owner-wa-phone" type="text" value="${initial}" placeholder="383..." class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500" />
+          </label>
+          <div class="mt-4 flex items-center justify-end gap-2">
+            <button type="button" id="owner-wa-cancel" class="premium-btn-ghost rounded-xl px-4 py-2 text-sm font-medium">Anulo</button>
+            <button type="button" id="owner-wa-open" class="premium-btn-primary rounded-xl px-4 py-2 text-sm font-semibold">Hap WhatsApp</button>
+          </div>
+        </div>
+      `
+      document.body.appendChild(overlay)
+      const input = overlay.querySelector<HTMLInputElement>('#owner-wa-phone')
+      input?.focus()
+      input?.select()
+
+      const close = (value: string | null) => {
+        overlay.remove()
+        resolve(value)
+      }
+
+      overlay.querySelector<HTMLButtonElement>('#owner-wa-cancel')?.addEventListener('click', () => close(null))
+      overlay.querySelector<HTMLButtonElement>('#owner-wa-open')?.addEventListener('click', () => {
+        close((input?.value ?? '').trim())
+      })
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) close(null)
+      })
+    })
   }
 
   function openShortageEditModal(initial: ShortageView): Promise<{
@@ -331,6 +389,9 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
               </button>
               <button data-action="download-pdf" data-order-id="${o.id}" class="rounded-lg border border-sky-300 bg-sky-50 px-2 py-1 text-[11px] font-semibold text-sky-700 hover:bg-sky-100">
                 Shkarko PDF
+              </button>
+              <button data-action="whatsapp" data-order-id="${o.id}" class="rounded-lg border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100">
+                WhatsApp
               </button>
               <button data-action="mark-sent" data-order-id="${o.id}" class="rounded-lg border border-slate-300 px-2 py-1 text-[11px] font-semibold ${
                 o.status === 'SENT' ? 'text-emerald-700 bg-emerald-50' : 'text-slate-700 bg-white hover:bg-slate-50'
@@ -577,7 +638,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
           </div>
         </section>
 
-        <section class="${section === 'settings' || section === 'porosite' || section === 'import' ? 'hidden ' : ''}grid gap-4">
+        <section class="${section === 'settings' ? 'hidden ' : ''}grid gap-4">
           <div class="${section === 'mungesat' || section === 'dashboard' ? '' : 'hidden '}premium-card p-4 md:p-5">
             <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
               <div>
@@ -622,7 +683,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             </div>
           </div>
 
-          <div class="${section === 'dashboard' ? '' : 'hidden '}space-y-3">
+          <div class="${section === 'dashboard' || section === 'porosite' || section === 'import' ? '' : 'hidden '}space-y-3">
             <div class="${section === 'porosite' || section === 'dashboard' ? '' : 'hidden '}premium-card p-4">
               <div class="flex items-center justify-between mb-2">
                 <h2 class="text-sm font-semibold text-slate-900">Porositë e fundit për dërgim</h2>
@@ -946,6 +1007,27 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       } catch {
         showToast('Shkarkimi i PDF dështoi.')
       }
+      return
+    }
+
+    if (action === 'whatsapp') {
+      const orderId = Number(btn.dataset.orderId)
+      const order = generatedOrders.find((o) => o.id === orderId)
+      if (!order) return
+      const phones = getSupplierPhones()
+      const typedPhone = await openWhatsAppPhoneModal(order.supplier, phones[order.supplier] ?? '')
+      if (typedPhone == null) return
+      const phone = normalizePhone(typedPhone)
+      if (phone.length < 8) {
+        showToast('Numri i WhatsApp nuk është valid.')
+        return
+      }
+      phones[order.supplier] = phone
+      setSupplierPhones(phones)
+      const text = buildReceipt(order)
+      const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
+      window.open(url, '_blank', 'noopener,noreferrer')
+      showToast('WhatsApp u hap me porosinë.')
       return
     }
 
