@@ -1,7 +1,7 @@
 import { signOut } from '../lib/auth.js'
 import { isSupabaseConfigured, supabase } from '../lib/supabase.js'
 import { getProfile } from '../lib/auth.js'
-import { getMockUser, setMockUser } from '../types.js'
+import { getMockUser } from '../types.js'
 import {
   addProduct,
   deleteShortage,
@@ -21,17 +21,11 @@ const iconLogout = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewB
 const iconTrend = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 17l4-4 4 4 5-5M3 3v18h18" /></svg>`
 const iconBox = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" /></svg>`
 const SUPPLIER_PHONE_STORAGE_KEY = 'flowinventory_supplier_phones'
-type OwnerSection = 'dashboard' | 'mungesat' | 'porosite' | 'import' | 'settings'
+type OwnerSection = 'mungesat' | 'porosite' | 'import'
 
-export function renderPronari(container: HTMLElement, routeSection = 'dashboard'): void {
+export function renderPronari(container: HTMLElement, routeSection = 'mungesat'): void {
   const section: OwnerSection =
-    routeSection === 'dashboard' ||
-    routeSection === 'mungesat' ||
-    routeSection === 'porosite' ||
-    routeSection === 'import' ||
-    routeSection === 'settings'
-      ? routeSection
-      : 'dashboard'
+    routeSection === 'porosite' || routeSection === 'import' ? routeSection : 'mungesat'
   const active = (key: OwnerSection): string => (section === key ? 'premium-nav-link active' : 'premium-nav-link')
   type ImportRow = {
     name: string
@@ -438,69 +432,12 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     if (statOrders) statOrders.textContent = String(generatedOrders.length)
     if (statUrgent) statUrgent.textContent = String(shortages.filter((s) => s.urgent).length)
 
-    const accName = document.getElementById('owner-settings-name')
-    const accEmail = document.getElementById('owner-settings-email')
-    const accRole = document.getElementById('owner-settings-role')
-    const accId = document.getElementById('owner-settings-userid')
-    const accProvider = document.getElementById('owner-settings-provider')
-    const accMode = document.getElementById('owner-settings-mode')
-    if (accName) accName.textContent = `${accountInfo.firstName} ${accountInfo.lastName}`.trim()
-    if (accEmail) accEmail.textContent = accountInfo.email
-    if (accRole) accRole.textContent = accountInfo.role
-    if (accId) accId.textContent = accountInfo.userId
-    if (accProvider) accProvider.textContent = accountInfo.provider
-    if (accMode) accMode.textContent = accountInfo.sessionMode
-    const accountInputFirst = document.getElementById('owner-settings-firstname') as HTMLInputElement | null
-    const accountInputLast = document.getElementById('owner-settings-lastname') as HTMLInputElement | null
-    const accountInputEmail = document.getElementById('owner-settings-email-input') as HTMLInputElement | null
-    if (accountInputFirst && document.activeElement !== accountInputFirst) accountInputFirst.value = accountInfo.firstName
-    if (accountInputLast && document.activeElement !== accountInputLast) accountInputLast.value = accountInfo.lastName
-    if (accountInputEmail && document.activeElement !== accountInputEmail) accountInputEmail.value = accountInfo.email
     const sidebarAvatar = document.getElementById('owner-sidebar-avatar')
     const sidebarName = document.getElementById('owner-sidebar-name')
     const menuAvatar = document.getElementById('owner-menu-avatar')
     if (sidebarAvatar) sidebarAvatar.textContent = (accountInfo.firstName || 'O').slice(0, 1).toUpperCase()
     if (menuAvatar) menuAvatar.textContent = (accountInfo.firstName || 'O').slice(0, 1).toUpperCase()
     if (sidebarName) sidebarName.textContent = `${accountInfo.firstName} ${accountInfo.lastName}`.trim()
-
-    const supplierList = document.getElementById('owner-dashboard-suppliers')
-    if (supplierList) {
-      const bySupplier = new Map<string, number>()
-      shortages.forEach((s) => bySupplier.set(s.supplierName, (bySupplier.get(s.supplierName) ?? 0) + 1))
-      const entries = [...bySupplier.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
-      supplierList.innerHTML = entries.length
-        ? entries
-            .map(
-              ([name, count]) => `
-          <li class="space-y-1">
-            <div class="flex items-center justify-between text-xs text-slate-700">
-              <span class="truncate">${name}</span>
-              <span class="font-semibold">${count}</span>
-            </div>
-            <div class="h-1.5 rounded-full bg-slate-200 overflow-hidden">
-              <div class="h-full bg-sky-500" style="width:${Math.min(100, count * 12)}%"></div>
-            </div>
-          </li>`
-            )
-            .join('')
-        : '<li class="text-xs text-slate-500">Nuk ka të dhëna ende.</li>'
-    }
-
-    const urgent = shortages.filter((s) => s.urgent).length
-    const urgentRate = shortages.length ? Math.round((urgent / shortages.length) * 100) : 0
-    const coverageRate = products.length
-      ? Math.round((new Set(shortages.map((s) => s.productId)).size / products.length) * 100)
-      : 0
-
-    const urgentText = document.getElementById('owner-db-urgent-rate')
-    const urgentBar = document.getElementById('owner-db-urgent-bar') as HTMLDivElement | null
-    if (urgentText) urgentText.textContent = `${urgentRate}%`
-    if (urgentBar) urgentBar.style.width = `${urgentRate}%`
-
-    const coverageText = document.getElementById('owner-db-coverage-rate')
-    const coverageBar = document.getElementById('owner-db-coverage-bar') as HTMLDivElement | null
-    if (coverageText) coverageText.textContent = `${coverageRate}%`
-    if (coverageBar) coverageBar.style.width = `${coverageRate}%`
   }
 
   container.innerHTML = `
@@ -514,17 +451,12 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             <span class="text-sm font-semibold text-slate-900">FlowInventory</span>
           </div>
           <nav class="space-y-1 text-sm">
-            <a href="#/pronari/dashboard" class="${active('dashboard')}">
-              <span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
-              Dashboard
-            </a>
             <a href="#/pronari/mungesat" class="${active('mungesat')}">
               <span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
               Mungesat
             </a>
-            <a href="#/pronari/porosite" class="${active('porosite')}">Porositë</a>
-            <a href="#/pronari/import" class="${active('import')}">Import</a>
-            <a href="#/pronari/settings" class="${active('settings')}">Settings</a>
+            <a href="#/porosite" class="${active('porosite')}">Porositë</a>
+            <a href="#/import" class="${active('import')}">Import</a>
           </nav>
         </div>
         <div class="flex items-center gap-3 rounded-2xl bg-white/90 border border-sky-100 px-3 py-2.5 shadow-sm">
@@ -541,17 +473,13 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       <main class="flex-1 rounded-3xl border border-slate-200 bg-white px-4 py-4 md:px-6 md:py-5 shadow-sm">
         <header class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4 mb-4">
           <div>
-            <p class="text-xs uppercase tracking-wide text-slate-500">${section === 'dashboard' ? 'Dashboard' : section === 'mungesat' ? 'Mungesat' : section === 'porosite' ? 'Porositë' : section === 'import' ? 'Import' : 'Settings'}</p>
+            <p class="text-xs uppercase tracking-wide text-slate-500">${section === 'mungesat' ? 'Mungesat' : section === 'porosite' ? 'Porositë' : 'Import'}</p>
             <h1 class="text-lg md:text-xl font-semibold text-slate-900">${
-              section === 'dashboard'
-                ? 'Pamje e përgjithshme me grafika'
-                : section === 'mungesat'
-                ? 'Mirë se vjen në Farmacia Valdet, Valdet!'
+              section === 'mungesat'
+                ? 'Menaxho mungesat dhe sasitë e sugjeruara'
                 : section === 'porosite'
                   ? 'Menaxho porositë e gjeneruara'
-                  : section === 'import'
-                    ? 'Importo dhe menaxho produktet'
-                    : 'Konfigurimet e panelit të pronarit'
+                  : 'Importo dhe menaxho produktet'
             }</h1>
           </div>
           <div class="flex items-center gap-2">
@@ -569,9 +497,6 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                 <span class="text-slate-500">⋯</span>
               </button>
               <div id="owner-account-menu" class="hidden absolute right-0 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl z-50">
-                <button type="button" id="owner-account-go-settings" class="w-full text-left rounded-lg px-2.5 py-2 text-xs text-slate-700 hover:bg-slate-100">
-                  ⚙️ Settings
-                </button>
                 <button type="button" id="owner-account-logout" class="w-full text-left rounded-lg px-2.5 py-2 text-xs text-red-700 hover:bg-red-50">
                   ⎋ Dil nga account
                 </button>
@@ -580,7 +505,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
           </div>
         </header>
 
-        <section class="${section === 'settings' ? 'hidden ' : ''}grid gap-3 md:grid-cols-4 mb-4">
+        <section class="grid gap-3 md:grid-cols-4 mb-4">
           <div class="rounded-2xl border border-[#b9e7b6] bg-linear-to-br from-[#ddf7da] to-[#f1fdea] p-3 shadow-sm">
             <p class="text-[11px] uppercase tracking-wide text-[#22624a]">Kontrolli</p>
             <p id="owner-stat-shortages" class="mt-1 text-xl font-semibold text-slate-800">0</p>
@@ -603,50 +528,14 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
           </div>
         </section>
 
-        <section class="${section === 'dashboard' ? '' : 'hidden '}grid gap-4 md:grid-cols-2 mb-4">
-          <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h3 class="text-sm font-semibold text-slate-900 mb-3">Graph report: mungesat sipas furnitorit</h3>
-            <ul id="owner-dashboard-suppliers" class="space-y-2"></ul>
-          </div>
-          <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h3 class="text-sm font-semibold text-slate-900 mb-3">Total shortages overview</h3>
-            <div class="space-y-3">
-              <div>
-                <div class="flex items-center justify-between text-xs text-slate-600 mb-1">
-                  <span>Norma urgjente</span>
-                  <strong id="owner-db-urgent-rate" class="text-slate-900">0%</strong>
-                </div>
-                <div class="h-2 rounded-full bg-slate-200 overflow-hidden">
-                  <div id="owner-db-urgent-bar" class="h-full bg-red-500" style="width:0%"></div>
-                </div>
-              </div>
-              <div>
-                <div class="flex items-center justify-between text-xs text-slate-600 mb-1">
-                  <span>Mbulim i produkteve</span>
-                  <strong id="owner-db-coverage-rate" class="text-slate-900">0%</strong>
-                </div>
-                <div class="h-2 rounded-full bg-slate-200 overflow-hidden">
-                  <div id="owner-db-coverage-bar" class="h-full bg-sky-500" style="width:0%"></div>
-                </div>
-              </div>
-              <div class="grid grid-cols-2 gap-2 pt-2">
-                <a href="#/pronari/mungesat" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100">Hap Mungesat</a>
-                <a href="#/pronari/porosite" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100">Hap Porositë</a>
-                <a href="#/pronari/import" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100">Hap Import</a>
-                <a href="#/pronari/settings" class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100">Hap Settings</a>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="${section === 'settings' ? 'hidden ' : ''}grid gap-4">
-          <div class="${section === 'mungesat' || section === 'dashboard' ? '' : 'hidden '}premium-card p-4 md:p-5">
+        <section class="grid gap-4">
+          <div class="${section === 'mungesat' ? '' : 'hidden '}premium-card p-4 md:p-5">
             <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
               <div>
-                <h2 class="text-sm font-semibold text-slate-900">${section === 'dashboard' ? 'Mungesat e fundit' : 'Mungesat për sot'}</h2>
-                <p class="text-xs text-slate-500">${section === 'dashboard' ? 'Pamje e shpejtë e mungesave aktive' : 'Renditur sipas furnitorit'}</p>
+                <h2 class="text-sm font-semibold text-slate-900">Mungesat për sot</h2>
+                <p class="text-xs text-slate-500">Renditur sipas furnitorit</p>
               </div>
-              <div class="flex items-center gap-2 ${section === 'dashboard' ? 'hidden' : ''}">
+              <div class="flex items-center gap-2">
                 <input id="owner-search" type="text" placeholder="Kërko barin..." class="premium-input w-40 md:w-56 rounded-lg px-3 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none" />
                 <select id="owner-sort" class="premium-input rounded-lg px-2.5 py-1.5 text-xs focus:outline-none">
                   <option value="supplier">Renditur sipas: Furnitorit</option>
@@ -684,8 +573,8 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             </div>
           </div>
 
-          <div class="${section === 'dashboard' || section === 'porosite' || section === 'import' ? '' : 'hidden '}space-y-3">
-            <div class="${section === 'porosite' || section === 'dashboard' ? '' : 'hidden '}premium-card p-4">
+          <div class="${section === 'porosite' || section === 'import' ? '' : 'hidden '}space-y-3">
+            <div class="${section === 'porosite' ? '' : 'hidden '}premium-card p-4">
               <div class="flex items-center justify-between mb-2">
                 <h2 class="text-sm font-semibold text-slate-900">Porositë e fundit për dërgim</h2>
                 <button data-action="show-all" class="text-[11px] text-sky-700 hover:underline">Shiko të gjitha</button>
@@ -713,85 +602,21 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
               </form>
               <ul id="owner-products-list" class="max-h-40 overflow-auto pr-1"></ul>
             </div>
-            <div class="${section === 'settings' ? 'hidden ' : ''}premium-card bg-linear-to-r from-slate-50 to-sky-50 p-3 text-[11px] text-slate-600">
+            <div class="premium-card bg-linear-to-r from-slate-50 to-sky-50 p-3 text-[11px] text-slate-600">
               Tërheqja e porosive në WhatsApp dhe gjenerimi i reciptit do të lidhen më vonë me backend-in.
             </div>
-          </div>
-        </section>
-
-        <section class="${section === 'settings' ? '' : 'hidden '}premium-card p-6">
-          <h2 class="text-lg font-semibold text-slate-900 mb-2">Settings</h2>
-          <p class="text-sm text-slate-600 mb-4">
-            Të dhënat e llogarisë aktive në këtë pajisje.
-          </p>
-          <div class="grid gap-3 md:grid-cols-2">
-            <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p class="text-[11px] uppercase tracking-wide text-slate-500">Emri i plotë</p>
-              <p id="owner-settings-name" class="text-sm font-semibold text-slate-900">—</p>
-            </div>
-            <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p class="text-[11px] uppercase tracking-wide text-slate-500">Email</p>
-              <p id="owner-settings-email" class="text-sm font-semibold text-slate-900">—</p>
-            </div>
-            <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p class="text-[11px] uppercase tracking-wide text-slate-500">Roli</p>
-              <p id="owner-settings-role" class="text-sm font-semibold text-slate-900">—</p>
-            </div>
-            <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p class="text-[11px] uppercase tracking-wide text-slate-500">User ID</p>
-              <p id="owner-settings-userid" class="text-xs font-semibold text-slate-900 break-all">—</p>
-            </div>
-            <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p class="text-[11px] uppercase tracking-wide text-slate-500">Auth Provider</p>
-              <p id="owner-settings-provider" class="text-sm font-semibold text-slate-900">—</p>
-            </div>
-            <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 md:col-span-2">
-              <p class="text-[11px] uppercase tracking-wide text-slate-500">Session Mode</p>
-              <p id="owner-settings-mode" class="text-sm font-semibold text-slate-900">—</p>
-            </div>
-          </div>
-          <form id="owner-account-form" class="mt-4 grid gap-3 md:grid-cols-2">
-            <label class="text-sm text-slate-700">
-              Emri
-              <input id="owner-settings-firstname" type="text" class="premium-input mt-1 w-full rounded-xl px-3 py-2 text-sm focus:outline-none" />
-            </label>
-            <label class="text-sm text-slate-700">
-              Mbiemri
-              <input id="owner-settings-lastname" type="text" class="premium-input mt-1 w-full rounded-xl px-3 py-2 text-sm focus:outline-none" />
-            </label>
-            <label class="text-sm text-slate-700 md:col-span-2">
-              Email
-              <input id="owner-settings-email-input" type="email" class="premium-input mt-1 w-full rounded-xl px-3 py-2 text-sm focus:outline-none" />
-            </label>
-            <div class="md:col-span-2 flex justify-end">
-              <button type="submit" class="premium-btn-primary rounded-xl px-4 py-2 text-sm font-semibold">
-                Ruaj account
-              </button>
-            </div>
-          </form>
-          <div class="mt-4 flex justify-end">
-            <button type="button" id="btn-signout" class="premium-btn-ghost inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm">
-              ${iconLogout}
-              Dil nga account
-            </button>
           </div>
         </section>
       </main>
     </div>
   `
 
-  const signoutBtn = document.getElementById('btn-signout') as HTMLButtonElement | null
-  signoutBtn?.addEventListener('click', () => signOut())
   const accountMenuBtn = document.getElementById('owner-account-menu-btn') as HTMLButtonElement | null
   const accountMenu = document.getElementById('owner-account-menu') as HTMLDivElement | null
-  const accountGoSettings = document.getElementById('owner-account-go-settings') as HTMLButtonElement | null
   const accountLogout = document.getElementById('owner-account-logout') as HTMLButtonElement | null
   accountMenuBtn?.addEventListener('click', (e) => {
     e.stopPropagation()
     accountMenu?.classList.toggle('hidden')
-  })
-  accountGoSettings?.addEventListener('click', () => {
-    window.location.hash = '#/pronari/settings'
   })
   accountLogout?.addEventListener('click', () => signOut())
   document.addEventListener('click', (e) => {
@@ -811,10 +636,6 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
   const productAliasesInput = document.getElementById('owner-product-aliases') as HTMLInputElement | null
   const importBtn = document.getElementById('btn-import-csv') as HTMLButtonElement | null
   const importInput = document.getElementById('import-csv-input') as HTMLInputElement | null
-  const accountForm = document.getElementById('owner-account-form') as HTMLFormElement | null
-  const firstNameInput = document.getElementById('owner-settings-firstname') as HTMLInputElement | null
-  const lastNameInput = document.getElementById('owner-settings-lastname') as HTMLInputElement | null
-  const emailInput = document.getElementById('owner-settings-email-input') as HTMLInputElement | null
 
   searchInput?.addEventListener('input', () => {
     searchQuery = searchInput.value
@@ -846,45 +667,6 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     if (productCategoryInput) productCategoryInput.value = 'barna'
     refreshUI()
     showToast('Bari u shtua. Do të dalë edhe te punëtori.')
-  })
-
-  accountForm?.addEventListener('submit', async (event) => {
-    event.preventDefault()
-    const firstName = (firstNameInput?.value ?? '').trim()
-    const lastName = (lastNameInput?.value ?? '').trim()
-    const email = (emailInput?.value ?? '').trim()
-    if (!email) {
-      showToast('Email është i detyrueshëm.')
-      return
-    }
-
-    if (!isSupabaseConfigured) {
-      const mock = getMockUser()
-      setMockUser({
-        email,
-        role: mock?.role ?? 'OWNER',
-        firstName,
-        lastName,
-      })
-      accountInfo = { ...accountInfo, firstName, lastName, email }
-      refreshUI()
-      showToast('Account u përditësua (Demo).')
-      return
-    }
-
-    const emailChanged = email !== accountInfo.email
-    const payload: { email?: string; data: { first_name: string; last_name: string } } = {
-      data: { first_name: firstName, last_name: lastName },
-    }
-    if (emailChanged) payload.email = email
-    const { error } = await supabase.auth.updateUser(payload)
-    if (error) {
-      showToast(`Dështoi: ${error.message}`)
-      return
-    }
-    accountInfo = { ...accountInfo, firstName, lastName, email }
-    refreshUI()
-    showToast(emailChanged ? 'Ruajtur. Kontrollo emailin për konfirmim.' : 'Account u përditësua.')
   })
 
   importBtn?.addEventListener('click', () => importInput?.click())

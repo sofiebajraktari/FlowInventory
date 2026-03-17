@@ -23,6 +23,7 @@ export interface OwnerOrder {
 export interface ProductView {
   id: string
   name: string
+  genericName?: string
   supplierId?: string
   supplierName: string
   category: 'barna' | 'front'
@@ -74,6 +75,7 @@ function fromMockProducts(rows: MockProduct[]): ProductView[] {
   return rows.map((p) => ({
     id: p.id,
     name: p.name,
+    genericName: undefined,
     supplierName: p.supplier,
     category: p.category,
     aliases: p.aliases ?? [],
@@ -85,7 +87,7 @@ export async function getProducts(): Promise<ProductView[]> {
 
   const { data, error } = await supabase
     .from('products')
-    .select('id,name,category,aliases,supplier_id,suppliers(name)')
+    .select('id,name,generic_name,category,aliases,supplier_id,suppliers(name)')
     .order('name')
 
   if (error || !data) return []
@@ -93,6 +95,7 @@ export async function getProducts(): Promise<ProductView[]> {
   return data.map((row: any) => ({
     id: row.id,
     name: row.name,
+    genericName: row.generic_name ?? undefined,
     supplierId: row.supplier_id ?? undefined,
     supplierName: row.suppliers?.name ?? 'Pa furnitor',
     category: row.category === 'front' ? 'front' : 'barna',

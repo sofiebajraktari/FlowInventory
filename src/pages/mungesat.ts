@@ -11,7 +11,7 @@ const logoSmall = `<img src="/brand/flowguard/logo.png" alt="FlowGuard logo" cla
 const iconLogout = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>`
 const iconBolt = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>`
 const iconClock = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v5l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`
-type WorkerSection = 'mungesat' | 'porosite' | 'import' | 'settings'
+type WorkerSection = 'mungesat'
 
 function renderResults(results: ProductView[]): string {
   if (!results.length) {
@@ -70,10 +70,7 @@ function renderMissingList(missingItems: ShortageView[]): string {
 }
 
 export function renderMungesat(container: HTMLElement, routeSection = 'mungesat'): void {
-  const section: WorkerSection =
-    routeSection === 'porosite' || routeSection === 'import' || routeSection === 'settings'
-      ? routeSection
-      : 'mungesat'
+  const section: WorkerSection = 'mungesat'
   const active = (key: WorkerSection): string => (section === key ? 'premium-nav-link active' : 'premium-nav-link')
   let allProducts: ProductView[] = []
 
@@ -104,9 +101,6 @@ export function renderMungesat(container: HTMLElement, routeSection = 'mungesat'
               <span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
               Mungesat
             </a>
-            <a href="#/mungesat/porosite" class="${active('porosite')}">Porositë</a>
-            <a href="#/mungesat/import" class="${active('import')}">Import</a>
-            <a href="#/mungesat/settings" class="${active('settings')}">Settings</a>
           </nav>
         </div>
         <div class="flex items-center gap-3 rounded-2xl bg-white/90 border border-sky-100 px-3 py-2.5 shadow-sm">
@@ -125,13 +119,7 @@ export function renderMungesat(container: HTMLElement, routeSection = 'mungesat'
             <div>
               <p class="text-xs uppercase tracking-wide text-slate-500">${section === 'mungesat' ? 'Mungesat' : section === 'porosite' ? 'Porositë' : section === 'import' ? 'Import' : 'Settings'}</p>
               <h1 class="text-lg md:text-xl font-semibold text-slate-900">${
-                section === 'mungesat'
-                  ? 'Shto mungesa shpejt për sot'
-                  : section === 'porosite'
-                    ? 'Porositë janë vetëm për pronarin'
-                    : section === 'import'
-                      ? 'Import është vetëm për pronarin'
-                      : 'Konfigurimet e punëtorit'
+                'Shto mungesa shpejt për sot'
               }</h1>
             </div>
           </div>
@@ -214,13 +202,6 @@ export function renderMungesat(container: HTMLElement, routeSection = 'mungesat'
           </div>
         </section>
 
-        <section class="${section === 'mungesat' ? 'hidden ' : ''}premium-card mt-4 p-6">
-          <h2 class="text-lg font-semibold text-slate-900 mb-2">Qasje e kufizuar për punëtorin</h2>
-          <p class="text-sm text-slate-600">
-            Sipas rolit në projekt, punëtori përdor vetëm faqen e mungesave. Seksioni
-            <strong> "${section}"</strong> menaxhohet nga pronari te paneli <code>#/pronari</code>.
-          </p>
-        </section>
       </main>
     </div>
   `
@@ -249,6 +230,7 @@ export function renderMungesat(container: HTMLElement, routeSection = 'mungesat'
       ? []
       : allProducts.filter((p) => {
           if (p.name.toLocaleLowerCase('sq-AL').includes(q)) return true
+          if ((p.genericName ?? '').toLocaleLowerCase('sq-AL').includes(q)) return true
           return p.aliases.some((a) => a.toLocaleLowerCase('sq-AL').includes(q))
         }).slice(0, 8)
     resultsDiv.innerHTML = renderResults(matches)

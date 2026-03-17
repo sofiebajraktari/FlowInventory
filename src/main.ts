@@ -9,14 +9,15 @@ import './style.css'
 
 const app = document.getElementById('app')!
 const THEME_TOGGLE_ID = 'theme-toggle-floating'
-
-function routeSection(route: string): string | null {
-  const parts = route.split('/').filter(Boolean)
-  return parts.length >= 2 ? parts[1] : null
-}
 function getRoute(): string {
   const hash = window.location.hash.slice(1) || '/'
   return hash.startsWith('/') ? hash : '/' + hash
+}
+
+function getOwnerSection(route: string): 'mungesat' | 'porosite' | 'import' {
+  if (route === '/porosite' || route.startsWith('/pronari/porosite')) return 'porosite'
+  if (route === '/import' || route.startsWith('/pronari/import')) return 'import'
+  return 'mungesat'
 }
 
 async function render(): Promise<void> {
@@ -63,17 +64,16 @@ async function render(): Promise<void> {
   }
 
   if (route === '/mungesat' || route.startsWith('/mungesat/')) {
-    const section = routeSection(route) ?? 'mungesat'
-    renderMungesat(app, section)
+    renderMungesat(app, 'mungesat')
     bindThemeToggleButtons(document)
     return
   }
-  if (route === '/pronari' || route.startsWith('/pronari/')) {
+  if (route === '/pronari' || route.startsWith('/pronari/') || route === '/porosite' || route === '/import') {
     if (profile.role !== 'OWNER') {
       window.location.hash = '#/mungesat'
       return
     }
-    const section = routeSection(route) ?? 'dashboard'
+    const section = getOwnerSection(route)
     renderPronari(app, section)
     bindThemeToggleButtons(document)
     return
