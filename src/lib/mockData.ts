@@ -67,6 +67,10 @@ export function addProduct(input: {
   supplier: string
   category: ProductCategory
   aliases?: string[]
+  producerName?: string
+  lastPaidPrice?: number
+  lastPriceDate?: string
+  defaultOrderQty?: number
 }): { ok: true; products: MockProduct[] } | { ok: false; message: string } {
   const name = input.name.trim()
   const supplier = input.supplier.trim()

@@ -111,6 +111,10 @@ export async function addProduct(input: {
   supplier: string
   category: 'barna' | 'front'
   aliases: string[]
+  producerName?: string
+  lastPaidPrice?: number
+  lastPriceDate?: string
+  defaultOrderQty?: number
 }): Promise<{ ok: true } | { ok: false; message: string }> {
   if (!isSupabaseConfigured) {
     const result = addProductMock({
@@ -124,6 +128,13 @@ export async function addProduct(input: {
 
   const name = input.name.trim()
   const supplierName = input.supplier.trim()
+  const producerName = (input.producerName ?? '').trim()
+  const defaultOrderQty = Math.max(1, Number(input.defaultOrderQty ?? 1))
+  const lastPaidPrice =
+    typeof input.lastPaidPrice === 'number' && Number.isFinite(input.lastPaidPrice)
+      ? input.lastPaidPrice
+      : null
+  const lastPriceDate = (input.lastPriceDate ?? '').trim() || null
   if (!name) return { ok: false, message: 'Shkruaj emrin e barit.' }
   if (!supplierName) return { ok: false, message: 'Shkruaj furnitorin.' }
 
@@ -154,7 +165,10 @@ export async function addProduct(input: {
     supplier_id: supplierId,
     category: input.category,
     aliases: input.aliases,
-    default_order_qty: 1,
+    producer_name: producerName || null,
+    last_paid_price: lastPaidPrice,
+    last_price_date: lastPriceDate,
+    default_order_qty: defaultOrderQty,
   })
   if (insertProduct.error) return { ok: false, message: insertProduct.error.message }
 

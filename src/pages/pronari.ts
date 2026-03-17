@@ -30,6 +30,10 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
   type ImportRow = {
     name: string
     supplier: string
+    producerName?: string
+    lastPaidPrice?: number
+    lastPriceDate?: string
+    defaultOrderQty?: number
     category: 'barna' | 'front'
     aliases: string[]
   }
@@ -39,6 +43,8 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
   let searchQuery = ''
   let sortBy: 'supplier' | 'name' = 'supplier'
   let generatedOrders: OwnerOrder[] = []
+  let pendingImportRows: ImportRow[] = []
+  let pendingImportIssues: string[] = []
   let accountInfo: {
     firstName: string
     lastName: string
@@ -123,6 +129,91 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
 
   function parseCategory(raw: string): 'barna' | 'front' {
     return raw.trim().toLocaleLowerCase('sq-AL') === 'front' ? 'front' : 'barna'
+  }
+
+  function parsePositiveNumber(raw: string): number | undefined {
+    if (!raw.trim()) return undefined
+    const normalized = raw.replace(',', '.')
+    const n = Number(normalized)
+    if (!Number.isFinite(n) || n <= 0) return undefined
+    return n
+  }
+
+  function parsePositiveInteger(raw: string): number | undefined {
+    if (!raw.trim()) return undefined
+    const n = Number.parseInt(raw, 10)
+    if (!Number.isFinite(n) || n <= 0) return undefined
+    return n
+  }
+
+  function parseDateIso(raw: string): string | undefined {
+    const val = raw.trim()
+    if (!val) return undefined
+    if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val
+    const parsed = new Date(val)
+    if (Number.isNaN(parsed.getTime())) return undefined
+    const y = parsed.getFullYear()
+    const m = String(parsed.getMonth() + 1).padStart(2, '0')
+    const d = String(parsed.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
+
+  function renderImportPreview(): string {
+    if (!pendingImportRows.length && !pendingImportIssues.length) {
+      return '<p class="text-[11px] text-slate-500">Zgjidh një file për preview para importit.</p>'
+    }
+
+    const issuesHtml = pendingImportIssues.length
+      ? `<div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] text-amber-800">
+          <p class="font-semibold mb-1">Rreshta të pavlefshëm (${pendingImportIssues.length})</p>
+          <ul class="list-disc pl-4 space-y-0.5 max-h-28 overflow-auto">
+            ${pendingImportIssues.map((x) => `<li>${x}</li>`).join('')}
+          </ul>
+        </div>`
+      : ''
+
+    const rowsHtml = pendingImportRows.length
+      ? `<div class="overflow-auto rounded-xl border border-slate-200">
+          <table class="min-w-full text-[11px]">
+            <thead class="bg-slate-100 text-slate-700">
+              <tr>
+                <th class="px-2 py-1 text-left">Emri</th>
+                <th class="px-2 py-1 text-left">Furnitori</th>
+                <th class="px-2 py-1 text-left">Producer</th>
+                <th class="px-2 py-1 text-left">Cmimi fundit</th>
+                <th class="px-2 py-1 text-left">Data cmimit</th>
+                <th class="px-2 py-1 text-left">Default qty</th>
+                <th class="px-2 py-1 text-left">Category</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${pendingImportRows.slice(0, 20).map((r) => `
+                <tr class="border-t border-slate-200">
+                  <td class="px-2 py-1">${r.name}</td>
+                  <td class="px-2 py-1">${r.supplier}</td>
+                  <td class="px-2 py-1">${r.producerName ?? '—'}</td>
+                  <td class="px-2 py-1">${r.lastPaidPrice ?? '—'}</td>
+                  <td class="px-2 py-1">${r.lastPriceDate ?? '—'}</td>
+                  <td class="px-2 py-1">${r.defaultOrderQty ?? '—'}</td>
+                  <td class="px-2 py-1">${r.category}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`
+      : '<p class="text-[11px] text-slate-500">Nuk ka rreshta valid për import.</p>'
+
+    return `
+      <div class="space-y-2">
+        <div class="flex items-center justify-between text-[11px] text-slate-600">
+          <span>Preview valid: <strong>${pendingImportRows.length}</strong></span>
+          <button data-action="apply-import" class="rounded-lg border border-emerald-300 bg-emerald-50 px-2 py-1 font-semibold text-emerald-700 hover:bg-emerald-100 ${pendingImportRows.length ? '' : 'opacity-50 pointer-events-none'}">
+            Apliko importin
+          </button>
+        </div>
+        ${issuesHtml}
+        ${rowsHtml}
+      </div>
+    `
   }
 
   function getSupplierPhones(): Record<string, string> {
@@ -407,8 +498,10 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     const tableBody = document.getElementById('owner-shortage-body')
     const ordersList = document.getElementById('owner-orders-list')
     const productsList = document.getElementById('owner-products-list')
+    const importPreview = document.getElementById('owner-import-preview')
     if (tableBody) tableBody.innerHTML = renderShortagesBody()
     if (ordersList) ordersList.innerHTML = renderOrdersPanel()
+    if (importPreview) importPreview.innerHTML = renderImportPreview()
     if (productsList) {
       productsList.innerHTML = products
         .slice(0, 8)
@@ -600,6 +693,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                   Shto bar të ri
                 </button>
               </form>
+              <div id="owner-import-preview" class="mb-2"></div>
               <ul id="owner-products-list" class="max-h-40 overflow-auto pr-1"></ul>
             </div>
             <div class="premium-card bg-linear-to-r from-slate-50 to-sky-50 p-3 text-[11px] text-slate-600">
@@ -674,6 +768,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     const file = importInput.files?.[0]
     if (!file) return
     let rows: ImportRow[] = []
+    const issues: string[] = []
 
     const filename = file.name.toLocaleLowerCase('sq-AL')
     const isExcel = filename.endsWith('.xlsx') || filename.endsWith('.xls')
@@ -690,18 +785,30 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
         }
         const sheet = wb.Sheets[first]
         const jsonRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '' })
-        rows = jsonRows.map((r): ImportRow => {
-          const categoryRaw = pickByKeys(r, ['category', 'kategoria', 'tipi']).toLocaleLowerCase('sq-AL')
-          return {
-            name: pickByKeys(r, ['name', 'emri', 'produkti', 'barna', 'bari']),
-            supplier: pickByKeys(r, ['supplier', 'furnitori', 'furnitori']),
-            category: parseCategory(categoryRaw),
-            aliases: pickByKeys(r, ['aliases', 'alias', 'sinonime'])
-              .split(/[|,]/)
-              .map((a) => a.trim())
-              .filter(Boolean),
-          }
-        }).filter((r) => r.name && r.supplier)
+        rows = jsonRows
+          .map((r, i): ImportRow | null => {
+            const name = pickByKeys(r, ['name', 'emri', 'produkti', 'barna', 'bari'])
+            const supplier = pickByKeys(r, ['supplier', 'suppliername', 'supplier_name', 'furnitori'])
+            if (!name || !supplier) {
+              issues.push(`Excel rreshti ${i + 2}: mungon name ose supplier_name`)
+              return null
+            }
+            const categoryRaw = pickByKeys(r, ['category', 'kategoria', 'tipi']).toLocaleLowerCase('sq-AL')
+            return {
+              name,
+              supplier,
+              producerName: pickByKeys(r, ['producername', 'producer_name', 'prodhuesi', 'prodhues']),
+              lastPaidPrice: parsePositiveNumber(pickByKeys(r, ['lastpaidprice', 'last_paid_price', 'cmimifundit', 'cmimiifundit'])),
+              lastPriceDate: parseDateIso(pickByKeys(r, ['lastpricedate', 'last_price_date', 'datacmimit'])),
+              defaultOrderQty: parsePositiveInteger(pickByKeys(r, ['defaultorderqty', 'default_order_qty', 'defaultsasi'])),
+              category: parseCategory(categoryRaw),
+              aliases: pickByKeys(r, ['aliases', 'alias', 'sinonime'])
+                .split(/[|,]/)
+                .map((a) => a.trim())
+                .filter(Boolean),
+            }
+          })
+          .filter((r): r is ImportRow => Boolean(r))
       } catch {
         showToast('Leximi i Excel dështoi.')
         return
@@ -713,37 +820,48 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
         showToast('CSV pa rreshta të vlefshëm.')
         return
       }
-      rows = lines.slice(1).map((row): ImportRow => {
-        const [name = '', supplier = '', category = 'barna', aliases = ''] = row.split(',')
-        return {
-          name: name.trim(),
-          supplier: supplier.trim(),
-          category: parseCategory(category),
-          aliases: aliases.split(/[|,]/).map((a) => a.trim()).filter(Boolean),
-        }
-      }).filter((r) => r.name && r.supplier)
+      const headers = lines[0].split(',').map((h) => normalizeHeader(h))
+      rows = lines
+        .slice(1)
+        .map((row, i): ImportRow | null => {
+          const cols = row.split(',').map((c) => c.trim())
+          const rowObj: Record<string, unknown> = {}
+          headers.forEach((h, idx) => {
+            rowObj[h] = cols[idx] ?? ''
+          })
+          const name = pickByKeys(rowObj, ['name', 'emri', 'produkti', 'barna', 'bari'])
+          const supplier = pickByKeys(rowObj, ['supplier', 'suppliername', 'supplier_name', 'furnitori'])
+          if (!name || !supplier) {
+            issues.push(`CSV rreshti ${i + 2}: mungon name ose supplier_name`)
+            return null
+          }
+          const categoryRaw = pickByKeys(rowObj, ['category', 'kategoria', 'tipi'])
+          return {
+            name,
+            supplier,
+            producerName: pickByKeys(rowObj, ['producername', 'producer_name', 'prodhuesi', 'prodhues']),
+            lastPaidPrice: parsePositiveNumber(pickByKeys(rowObj, ['lastpaidprice', 'last_paid_price', 'cmimifundit', 'cmimiifundit'])),
+            lastPriceDate: parseDateIso(pickByKeys(rowObj, ['lastpricedate', 'last_price_date', 'datacmimit'])),
+            defaultOrderQty: parsePositiveInteger(pickByKeys(rowObj, ['defaultorderqty', 'default_order_qty', 'defaultsasi'])),
+            category: parseCategory(categoryRaw),
+            aliases: pickByKeys(rowObj, ['aliases', 'alias', 'sinonime'])
+              .split(/[|,]/)
+              .map((a) => a.trim())
+              .filter(Boolean),
+          }
+        })
+        .filter((r): r is ImportRow => Boolean(r))
     }
 
-    if (!rows.length) {
+    if (!rows.length && !issues.length) {
       showToast('Nuk u gjetën rreshta valide për import.')
       importInput.value = ''
       return
     }
-
-    let okCount = 0
-    for (const row of rows) {
-      const result = await addProduct({
-        name: row.name,
-        supplier: row.supplier,
-        category: row.category,
-        aliases: row.aliases,
-      })
-      if (result.ok) okCount += 1
-    }
-    products = await getProducts()
+    pendingImportRows = rows
+    pendingImportIssues = issues
     refreshUI()
-    showToast(`Import u krye: ${okCount} produkte.`)
-    importInput.value = ''
+    showToast(`Preview gati: ${rows.length} valid, ${issues.length} me gabime.`)
   })
 
   container.addEventListener('click', async (event) => {
@@ -868,6 +986,36 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
 
     if (action === 'show-all') {
       showToast(`Gjithsej ${generatedOrders.length} porosi në listë.`)
+      return
+    }
+
+    if (action === 'apply-import') {
+      if (!pendingImportRows.length) {
+        showToast('Nuk ka rreshta valid për import.')
+        return
+      }
+      let okCount = 0
+      let failCount = 0
+      for (const row of pendingImportRows) {
+        const result = await addProduct({
+          name: row.name,
+          supplier: row.supplier,
+          category: row.category,
+          aliases: row.aliases,
+          producerName: row.producerName,
+          lastPaidPrice: row.lastPaidPrice,
+          lastPriceDate: row.lastPriceDate,
+          defaultOrderQty: row.defaultOrderQty,
+        })
+        if (result.ok) okCount += 1
+        else failCount += 1
+      }
+      products = await getProducts()
+      pendingImportRows = []
+      pendingImportIssues = []
+      if (importInput) importInput.value = ''
+      refreshUI()
+      showToast(`Import u aplikua: ${okCount} OK, ${failCount} dështuan.`)
       return
     }
 
