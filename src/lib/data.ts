@@ -24,6 +24,7 @@ export interface ProductView {
   id: string
   name: string
   genericName?: string
+  defaultOrderQty?: number
   supplierId?: string
   supplierName: string
   category: 'barna' | 'front'
@@ -76,6 +77,7 @@ function fromMockProducts(rows: MockProduct[]): ProductView[] {
     id: p.id,
     name: p.name,
     genericName: undefined,
+    defaultOrderQty: 1,
     supplierName: p.supplier,
     category: p.category,
     aliases: p.aliases ?? [],
@@ -87,7 +89,7 @@ export async function getProducts(): Promise<ProductView[]> {
 
   const { data, error } = await supabase
     .from('products')
-    .select('id,name,generic_name,category,aliases,supplier_id,suppliers(name)')
+    .select('id,name,generic_name,default_order_qty,category,aliases,supplier_id,suppliers(name)')
     .order('name')
 
   if (error || !data) return []
@@ -96,6 +98,7 @@ export async function getProducts(): Promise<ProductView[]> {
     id: row.id,
     name: row.name,
     genericName: row.generic_name ?? undefined,
+    defaultOrderQty: Number(row.default_order_qty ?? 1),
     supplierId: row.supplier_id ?? undefined,
     supplierName: row.suppliers?.name ?? 'Pa furnitor',
     category: row.category === 'front' ? 'front' : 'barna',
@@ -174,20 +177,40 @@ export async function addMungese(productId: string, urgent: boolean, note: strin
 export async function getTodayShortages(): Promise<ShortageView[]> {
   if (!isSupabaseConfigured) return fromMockShortages(getShortagesMock())
 
-  const [productsRes, shortagesRes] = await Promise.all([
+  const [productsRes, shortagesRes, lastOrderItemsRes] = await Promise.all([
     getProducts(),
     supabase
       .from('mungesat')
       .select('id,product_id,urgent,note,added_count')
       .eq('entry_date', todayIso())
       .order('created_at', { ascending: false }),
+    supabase
+      .from('order_items')
+      .select('product_id,final_qty,created_at')
+      .order('created_at', { ascending: false })
+      .limit(2000),
   ])
 
   if (shortagesRes.error || !shortagesRes.data) return []
   const productMap = new Map(productsRes.map((p) => [p.id, p]))
+  const lastFinalQtyByProduct = new Map<string, number>()
+  if (!lastOrderItemsRes.error && Array.isArray(lastOrderItemsRes.data)) {
+    for (const item of lastOrderItemsRes.data as Array<{ product_id: string; final_qty: number | null }>) {
+      if (!item?.product_id || lastFinalQtyByProduct.has(item.product_id)) continue
+      const qty = Number(item.final_qty ?? 0)
+      if (Number.isFinite(qty) && qty > 0) lastFinalQtyByProduct.set(item.product_id, qty)
+    }
+  }
 
   return shortagesRes.data.map((row: any) => {
     const product = productMap.get(row.product_id)
+    const addedCount = Math.max(1, Number(row.added_count ?? 1))
+    const lastFinalQty = lastFinalQtyByProduct.get(row.product_id)
+    const defaultQty = Math.max(1, Number(product?.defaultOrderQty ?? 1))
+    const baseQty = lastFinalQty && lastFinalQty > 0 ? lastFinalQty : defaultQty
+    const urgentBump = row.urgent ? 1 : 0
+    const repeatBump = addedCount >= 3 ? 1 : 0
+    const suggestedQty = Math.max(1, baseQty + urgentBump + repeatBump)
     return {
       id: row.id,
       productId: row.product_id,
@@ -196,8 +219,8 @@ export async function getTodayShortages(): Promise<ShortageView[]> {
       supplierName: product?.supplierName ?? 'Pa furnitor',
       urgent: Boolean(row.urgent),
       note: row.note ?? '',
-      addedCount: Number(row.added_count ?? 1),
-      suggestedQty: Math.max(1, Number(row.added_count ?? 1)),
+      addedCount,
+      suggestedQty,
     }
   })
 }
