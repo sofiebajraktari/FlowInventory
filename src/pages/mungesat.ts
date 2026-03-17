@@ -7,7 +7,7 @@ import {
   type ShortageView,
 } from '../lib/data.js'
 
-const logoSmall = `<svg class="w-8 h-8 text-pharm-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19.5 12c0-1.2-.5-2.3-1.4-3.1l-2.1-2.1-2.1 2.1a4.5 4.5 0 01-6.4 0l-2.1-2.1-2.1 2.1A4.5 4.5 0 004.5 12a4.5 4.5 0 001.4 3.2l2.1 2.1 2.1-2.1a4.5 4.5 0 016.4 0l2.1 2.1 2.1-2.1a4.5 4.5 0 001.4-3.2z" /></svg>`
+const logoSmall = `<img src="/brand/flowguard/logo.png" alt="FlowGuard logo" class="w-8 h-8 rounded-full object-cover shrink-0" />`
 const iconLogout = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>`
 const iconBolt = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>`
 const iconClock = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v5l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`
@@ -95,7 +95,7 @@ export function renderMungesat(container: HTMLElement, routeSection = 'mungesat'
         <div>
           <div class="flex items-center gap-2 mb-6">
             <div class="w-9 h-9 rounded-2xl bg-white flex items-center justify-center shadow">
-              <div class="w-5 h-8 rounded-full bg-linear-to-b from-sky-400 to-white"></div>
+              <img src="/brand/flowguard/logo.png" alt="FlowGuard logo" class="w-7 h-7 rounded-full object-cover" />
             </div>
             <span class="text-sm font-semibold text-slate-900">FlowInventory</span>
           </div>

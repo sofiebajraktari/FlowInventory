@@ -447,7 +447,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
         <div>
           <div class="flex items-center gap-2 mb-6">
             <div class="w-9 h-9 rounded-2xl bg-white flex items-center justify-center shadow">
-              <div class="w-5 h-8 rounded-full bg-linear-to-b from-sky-400 to-white"></div>
+              <img src="/brand/flowguard/logo.png" alt="FlowGuard logo" class="w-7 h-7 rounded-full object-cover" />
             </div>
             <span class="text-sm font-semibold text-slate-900">FlowInventory</span>
           </div>

@@ -18,7 +18,10 @@ export function renderLogin(container: HTMLElement): void {
         <div class="auth-card">
           <header class="auth-header">
             <div class="flex items-center justify-between mb-2">
-              <p class="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-700">FlowInventory</p>
+              <p class="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-700">
+                <img src="/brand/flowguard/logo.png" alt="FlowGuard logo" class="h-4 w-4 rounded-full object-cover" />
+                FlowInventory
+              </p>
               <button type="button" data-theme-toggle="1" class="theme-toggle-chip rounded-full px-2.5 py-1 text-[11px] font-semibold"></button>
             </div>
             <h1 class="auth-title">Kyçu në llogarinë tënde</h1>
@@ -80,8 +83,8 @@ export function renderLogin(container: HTMLElement): void {
           <div class="auth-hero-illustration-text">
             Pamje moderne për ekipin tënd: fokus te shpejtësia, qartësia dhe vendimet e sakta.
           </div>
-          <div class="w-40 h-24 rounded-xl border border-sky-300/40 bg-white/70 grid place-items-center text-xs text-slate-600">
-            Farmaci · Workflow live
+          <div class="w-40 h-24 rounded-xl border border-sky-300/40 bg-white/70 grid place-items-center">
+            <img src="/brand/flowguard/logo.png" alt="FlowGuard logo" class="h-16 w-16 object-contain" />
           </div>
         </div>
       </div>
