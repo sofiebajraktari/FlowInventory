@@ -250,6 +250,18 @@ ${order.items.join('\n')}
 Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
   }
 
+  async function downloadOrderPdf(order: OwnerOrder): Promise<void> {
+    const { jsPDF } = await import('jspdf')
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+    const receiptText = buildReceipt(order)
+    const lines = doc.splitTextToSize(receiptText, 180)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(12)
+    doc.text(lines, 15, 20)
+    const safeSupplier = order.supplier.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '')
+    doc.save(`porosia-${order.id}-${safeSupplier || 'furnitor'}.pdf`)
+  }
+
   function renderShortagesBody(): string {
     const rows = getFilteredRows()
     if (!rows.length) {
@@ -316,6 +328,9 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             <div class="flex items-center gap-1">
               <button data-action="copy" data-order-id="${o.id}" class="rounded-lg bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-500">
                 Kopjo reciptin
+              </button>
+              <button data-action="download-pdf" data-order-id="${o.id}" class="rounded-lg border border-sky-300 bg-sky-50 px-2 py-1 text-[11px] font-semibold text-sky-700 hover:bg-sky-100">
+                Shkarko PDF
               </button>
               <button data-action="mark-sent" data-order-id="${o.id}" class="rounded-lg border border-slate-300 px-2 py-1 text-[11px] font-semibold ${
                 o.status === 'SENT' ? 'text-emerald-700 bg-emerald-50' : 'text-slate-700 bg-white hover:bg-slate-50'
@@ -917,6 +932,19 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
         showToast('Recipti u kopjua!')
       } catch {
         showToast('Kopjimi dështoi.')
+      }
+      return
+    }
+
+    if (action === 'download-pdf') {
+      const orderId = Number(btn.dataset.orderId)
+      const order = generatedOrders.find((o) => o.id === orderId)
+      if (!order) return
+      try {
+        await downloadOrderPdf(order)
+        showToast('PDF u shkarkua.')
+      } catch {
+        showToast('Shkarkimi i PDF dështoi.')
       }
       return
     }
