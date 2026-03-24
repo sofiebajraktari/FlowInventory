@@ -86,6 +86,7 @@ export function renderRegister(container: HTMLElement): void {
               </div>
               <p id="register-error" class="auth-error" aria-live="polite"></p>
               <button type="submit" id="register-btn" class="auth-primary-button">Krijo llogarinë</button>
+              <p class="auth-switch-inline">Ke llogari? <button type="button" id="btn-kycu-inline" class="auth-switch-link">Kyçu</button></p>
             </form>
           </div>
         </section>
@@ -105,6 +106,7 @@ export function renderRegister(container: HTMLElement): void {
   const errorEl = document.getElementById('register-error')!
   const btn = document.getElementById('register-btn') as HTMLButtonElement
   const btnKycu = document.getElementById('btn-kycu')!
+  const btnKycuInline = document.getElementById('btn-kycu-inline') as HTMLButtonElement | null
   const passwordInput = document.getElementById('reg-password') as HTMLInputElement | null
   const togglePasswordBtn = document.getElementById('toggle-register-password') as HTMLButtonElement | null
   const emailInput = document.getElementById('reg-email') as HTMLInputElement | null
@@ -125,6 +127,9 @@ export function renderRegister(container: HTMLElement): void {
   }
 
   btnKycu.addEventListener('click', () => {
+    animateAuthSwitch('#/kycu')
+  })
+  btnKycuInline?.addEventListener('click', () => {
     animateAuthSwitch('#/kycu')
   })
 

@@ -124,6 +124,11 @@ export function renderLogin(container: HTMLElement): void {
               }
               <p id="login-error" class="auth-error" aria-live="polite"></p>
               <button type="submit" id="login-btn" class="auth-primary-button">${recoveryMode ? 'Ruaj fjalëkalimin' : 'Kyçu'}</button>
+              ${
+                recoveryMode
+                  ? ''
+                  : '<p class="auth-switch-inline">Nuk ke llogari? <button type="button" id="btn-regjistrohu-inline" class="auth-switch-link">Regjistrohu</button></p>'
+              }
             </form>
           </div>
         </section>
@@ -143,6 +148,7 @@ export function renderLogin(container: HTMLElement): void {
   const errorEl = document.getElementById('login-error')!
   const btn = document.getElementById('login-btn') as HTMLButtonElement
   const btnRegjistrohu = document.getElementById('btn-regjistrohu')!
+  const btnRegjistrohuInline = document.getElementById('btn-regjistrohu-inline') as HTMLButtonElement | null
   const emailInput = document.getElementById('email') as HTMLInputElement | null
   const passwordInput = document.getElementById('password') as HTMLInputElement | null
   const passwordConfirmInput = document.getElementById('password-confirm') as HTMLInputElement | null
@@ -178,6 +184,9 @@ export function renderLogin(container: HTMLElement): void {
       window.location.hash = '#/kycu'
       return
     }
+    animateAuthSwitch('#/regjistrohu')
+  })
+  btnRegjistrohuInline?.addEventListener('click', () => {
     animateAuthSwitch('#/regjistrohu')
   })
 

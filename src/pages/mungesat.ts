@@ -1,4 +1,5 @@
-import { signOut } from '../lib/auth.js'
+import { getProfile, signOut } from '../lib/auth.js'
+import { isSupabaseConfigured, supabase } from '../lib/supabase.js'
 import {
   addMungese,
   getProducts,
@@ -69,17 +70,17 @@ function renderMissingList(missingItems: ShortageView[]): string {
             .map(
               (m) => `
             <tr class="worker-missing-row border-t border-slate-200 hover:bg-slate-50/70 transition-colors">
-              <td class="worker-missing-product px-3 py-2.5 font-medium text-slate-800">${m.productName}</td>
-              <td class="worker-missing-supplier px-3 py-2.5 text-slate-600">${m.supplierName}</td>
-              <td class="px-3 py-2.5">
+              <td data-label="Bari" class="worker-missing-product px-3 py-2.5 font-medium text-slate-800">${m.productName}</td>
+              <td data-label="Furnitori" class="worker-missing-supplier px-3 py-2.5 text-slate-600">${m.supplierName}</td>
+              <td data-label="Urgjent" class="px-3 py-2.5">
                 ${
                   m.urgent
                     ? '<span class="worker-missing-status worker-missing-status-urgent inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 border border-red-200">URGJENT</span>'
                     : '<span class="worker-missing-status worker-missing-status-normal inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 border border-slate-200">Normal</span>'
                 }
               </td>
-              <td class="worker-missing-note px-3 py-2.5 text-slate-600">${m.note || '—'}</td>
-              <td class="px-3 py-2.5 text-right">
+              <td data-label="Shënim" class="worker-missing-note px-3 py-2.5 text-slate-600">${m.note || '—'}</td>
+              <td data-label="Shtuar" class="px-3 py-2.5 text-right">
                 <span class="worker-missing-count inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-200">x${m.addedCount}</span>
               </td>
             </tr>`
@@ -128,10 +129,10 @@ export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat
           </nav>
         </div>
         <div class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
-          <div class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-sm font-semibold text-blue-700">P</div>
+          <div id="worker-account-initial" class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-sm font-semibold text-blue-700">P</div>
           <div class="text-xs">
-            <div class="text-slate-900 font-medium">Punëtor</div>
-            <div class="text-slate-500 text-[11px]">Worker</div>
+            <div id="worker-account-name" class="text-slate-900 font-medium">Përdorues</div>
+            <div id="worker-account-role" class="text-slate-500 text-[11px]">Llogari</div>
           </div>
         </div>
       </aside>
@@ -278,6 +279,37 @@ export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat
   const statTotal = document.getElementById('worker-stat-total') as HTMLParagraphElement | null
   const statProducts = document.getElementById('worker-stat-products') as HTMLParagraphElement | null
   const statUrgent = document.getElementById('worker-stat-urgent') as HTMLParagraphElement | null
+  const accountInitial = document.getElementById('worker-account-initial') as HTMLDivElement | null
+  const accountName = document.getElementById('worker-account-name') as HTMLDivElement | null
+  const accountRole = document.getElementById('worker-account-role') as HTMLDivElement | null
+
+  const applyAccountInfo = (name: string, roleLabel: string): void => {
+    if (accountName) accountName.textContent = name
+    if (accountRole) accountRole.textContent = roleLabel
+    if (accountInitial) {
+      const first = (name || roleLabel).trim().charAt(0).toUpperCase()
+      accountInitial.textContent = first || 'P'
+    }
+  }
+
+  async function loadAccountInfo(): Promise<void> {
+    if (!isSupabaseConfigured) {
+      applyAccountInfo('Përdorues', 'Demo')
+      return
+    }
+    try {
+      const [{ data: userData }, profile] = await Promise.all([supabase.auth.getUser(), getProfile()])
+      const user = userData.user
+      const firstName = String(user?.user_metadata?.first_name ?? '').trim()
+      const lastName = String(user?.user_metadata?.last_name ?? '').trim()
+      const email = String(user?.email ?? '').trim()
+      const fullName = [firstName, lastName].filter(Boolean).join(' ').trim()
+      const roleLabel = profile?.role === 'OWNER' ? 'Pronari' : 'Punëtor'
+      applyAccountInfo(fullName || email || roleLabel, roleLabel)
+    } catch {
+      applyAccountInfo('Përdorues', 'Llogari')
+    }
+  }
 
   async function refreshMissingList(): Promise<void> {
     const items = await getTodayShortages()
@@ -330,5 +362,6 @@ export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat
     allProducts = products
     if (statProducts) statProducts.textContent = String(products.length)
   })
+  void loadAccountInfo()
   refreshMissingList()
 }

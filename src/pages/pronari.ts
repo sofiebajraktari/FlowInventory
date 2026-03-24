@@ -569,7 +569,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       .map(
         (s) => `
       <tr class="owner-shortage-row border-t border-slate-200 hover:bg-slate-50/70 transition-colors">
-        <td class="px-3 py-3">
+        <td data-label="Barna" class="px-3 py-3">
           <div class="flex items-center gap-2">
             <div class="owner-product-badge h-7 w-7 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-[10px] font-semibold text-blue-700">
               ${s.productName.slice(0, 2).toUpperCase()}
@@ -580,15 +580,15 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             </div>
           </div>
         </td>
-        <td class="px-3 py-3">
+        <td data-label="Sasia" class="px-3 py-3">
           <div class="owner-qty-pill inline-flex items-center rounded-full border border-slate-300 bg-white px-2 py-1 gap-1">
             <button data-action="decrement" data-id="${s.id}" class="owner-qty-btn text-slate-600 text-xs px-1 hover:text-slate-900">-</button>
             <span class="owner-qty-value w-6 text-center text-slate-800 text-xs">${s.suggestedQty}</span>
             <button data-action="increment" data-id="${s.id}" class="owner-qty-btn text-slate-600 text-xs px-1 hover:text-slate-900">+</button>
           </div>
         </td>
-        <td class="owner-supplier-cell px-3 py-3 text-slate-700 text-xs">${s.supplierName}</td>
-        <td class="px-3 py-3">
+        <td data-label="Furnitori" class="owner-supplier-cell px-3 py-3 text-slate-700 text-xs">${s.supplierName}</td>
+        <td data-label="Shënim" class="px-3 py-3">
           <div class="flex items-center gap-2">
             <span class="owner-status-pill rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
               s.urgent
@@ -600,7 +600,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             ${s.note ? `<span class="owner-note-text text-[11px] text-slate-600 max-w-40 truncate">${s.note}</span>` : ''}
           </div>
         </td>
-        <td class="px-3 py-3 text-right">
+        <td data-label="Veprime" class="px-3 py-3 text-right">
           <div class="inline-flex items-center gap-1.5">
             <button data-action="copy-shortage-name" data-id="${s.id}" title="Kopjo detajet" class="ui-icon-btn">${iconCopy}</button>
             <button data-action="edit-note" data-id="${s.id}" title="Ndrysho mungesën" class="ui-icon-btn">${iconEdit}</button>
@@ -692,14 +692,14 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                 const productList = o.items.map((item) => item.replace(/^\d+\s*[x×]\s*/i, '')).join(', ')
                 return `
                   <tr class="owner-order-row border-t border-slate-200 hover:bg-slate-50/80 transition-colors">
-                    <td class="owner-order-id px-3 py-3 font-semibold text-blue-700">#${o.id}</td>
-                    <td class="owner-order-product-cell px-3 py-3 text-slate-700">
+                    <td data-label="ID" class="owner-order-id px-3 py-3 font-semibold text-blue-700">#${o.id}</td>
+                    <td data-label="Produkti" class="owner-order-product-cell px-3 py-3 text-slate-700">
                       <p class="owner-order-product-name font-medium text-slate-800">${o.supplier}</p>
                       <p class="owner-order-product-list mt-0.5 max-w-[320px] truncate text-[11px] text-slate-500">${productList || '—'}</p>
                     </td>
-                    <td class="owner-order-qty px-3 py-3 text-slate-700 font-medium">${qtySum || o.items.length}</td>
-                    <td class="px-3 py-3">${renderOrderStatus(o.status)}</td>
-                    <td class="px-3 py-3">
+                    <td data-label="Sasia" class="owner-order-qty px-3 py-3 text-slate-700 font-medium">${qtySum || o.items.length}</td>
+                    <td data-label="Status" class="px-3 py-3">${renderOrderStatus(o.status)}</td>
+                    <td data-label="Veprime" class="px-3 py-3">
                       <div class="flex items-center justify-end gap-1.5">
                         <button data-action="copy" data-order-id="${o.id}" data-order-db-id="${o.dbId ?? ''}" title="Kopjo reciptin për WhatsApp" aria-label="Kopjo reciptin për WhatsApp" class="ui-icon-btn">
                           ${iconCopy}
@@ -815,7 +815,6 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
           </nav>
         </div>
         <div class="space-y-2">
-          <button type="button" data-theme-toggle="1" class="theme-toggle-chip inline-flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold"></button>
           <div id="owner-sidebar-account-card" class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
             <div id="owner-sidebar-avatar" class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-sm font-semibold text-blue-700">
               O
@@ -931,7 +930,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                 </select>
               </div>
             </div>
-            <div class="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div class="owner-shortages-table-wrap overflow-hidden rounded-xl border border-slate-200 bg-white">
               <table class="min-w-full text-xs">
                 <thead class="ui-table-head bg-slate-100 text-slate-700">
                   <tr>
