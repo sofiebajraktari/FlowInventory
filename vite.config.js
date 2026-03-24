@@ -3,6 +3,10 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   root: '.',
+  build: {
+    outDir: 'out',
+    emptyOutDir: true,
+  },
   plugins: [
     VitePWA({
       registerType: 'autoUpdate',
@@ -36,7 +40,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,png,svg,ico}'],
       },
       devOptions: {
-        enabled: true,
+        enabled: false,
       },
     }),
   ],

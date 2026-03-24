@@ -6,26 +6,32 @@ import {
   type ProductView,
   type ShortageView,
 } from '../lib/data.js'
+import { rankProductsForWorkerSearch } from '../lib/fuzzyProductSearch.js'
 
-const logoSmall = `<img src="/brand/flowguard/logo.png" alt="FlowGuard logo" class="w-8 h-8 rounded-full object-cover shrink-0" />`
 const iconLogout = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>`
-const iconBolt = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>`
-const iconClock = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v5l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`
+const iconSearch = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 117.5-7.5 7.5 7.5 0 01-7.5 7.5z" /></svg>`
+const iconMenu = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>`
+const iconKpiTotal = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg>`
+const iconKpiProducts = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" /></svg>`
+const iconKpiUrgent = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4m0 4h.01" /></svg>`
 type WorkerSection = 'mungesat'
 
 function renderResults(results: ProductView[]): string {
   if (!results.length) {
-    return `<p class="text-sm text-slate-500">Nuk u gjet asnjë bar me këtë kërkim.</p>`
+    return `<div class="premium-empty">
+      <div class="premium-empty-title">Nuk u gjet asnjë bar</div>
+      <p class="premium-empty-copy">Kontrollo drejtshkrimin ose provo me emër tjetër.</p>
+    </div>`
   }
   return `
-    <ul class="mt-2 divide-y divide-slate-200">
+    <ul class="mt-2 overflow-hidden rounded-xl border border-slate-200 divide-y divide-slate-200 bg-white">
       ${results
         .map(
           (p) => `
         <li>
-          <button type="button" class="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center justify-between gap-2 select-product transition-colors" data-id="${p.id}">
+          <button type="button" class="w-full text-left px-3 py-2.5 hover:bg-slate-50 flex items-center justify-between gap-2 select-product transition-colors" data-id="${p.id}">
             <div>
-              <div class="text-sm text-slate-800">${p.name}</div>
+              <div class="text-sm font-medium text-slate-800">${p.name}</div>
               <div class="text-xs text-slate-500">Furnitori: ${p.supplierName}</div>
             </div>
             <span class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border border-slate-300 text-slate-600">
@@ -41,35 +47,51 @@ function renderResults(results: ProductView[]): string {
 
 function renderMissingList(missingItems: ShortageView[]): string {
   if (!missingItems.length) {
-    return `<p class="text-sm text-slate-500">Nuk ka mungesa të regjistruara për sot.</p>`
+    return `<div class="premium-empty">
+      <div class="premium-empty-title">Nuk ka mungesa për sot</div>
+      <p class="premium-empty-copy">Gjendja është e stabilizuar për momentin.</p>
+    </div>`
   }
   return `
-    <ul class="space-y-2">
-      ${missingItems
-        .map(
-          (m) => `
-        <li class="flex items-start justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
-          <div>
-            <div class="text-sm text-slate-800">${m.productName}</div>
-            <div class="text-xs text-slate-500">Furnitori: ${m.supplierName}</div>
-            ${
-              m.note
-                ? `<div class="mt-0.5 text-xs text-slate-600">Shënim: ${m.note}</div>`
-                : ''
-            }
-          </div>
-          <div class="flex flex-col items-end gap-1">
-            <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-700 border border-slate-200">Shtuar: x${m.addedCount}</span>
-            ${m.urgent ? '<span class="rounded-full bg-red-100 px-2 py-0.5 text-[11px] text-red-700 border border-red-200">URGJENT</span>' : ''}
-          </div>
-        </li>`
-        )
-        .join('')}
-    </ul>
+    <div class="worker-missing-table-wrap overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <table class="min-w-full text-xs">
+        <thead class="worker-missing-head ui-table-head bg-slate-100 text-slate-700">
+          <tr>
+            <th class="px-3 py-2 text-left font-medium">Bari</th>
+            <th class="px-3 py-2 text-left font-medium">Furnitori</th>
+            <th class="px-3 py-2 text-left font-medium">Urgjent</th>
+            <th class="px-3 py-2 text-left font-medium">Shënim</th>
+            <th class="px-3 py-2 text-right font-medium">Shtuar</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${missingItems
+            .map(
+              (m) => `
+            <tr class="worker-missing-row border-t border-slate-200 hover:bg-slate-50/70 transition-colors">
+              <td class="worker-missing-product px-3 py-2.5 font-medium text-slate-800">${m.productName}</td>
+              <td class="worker-missing-supplier px-3 py-2.5 text-slate-600">${m.supplierName}</td>
+              <td class="px-3 py-2.5">
+                ${
+                  m.urgent
+                    ? '<span class="worker-missing-status worker-missing-status-urgent inline-flex rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-700 border border-red-200">URGJENT</span>'
+                    : '<span class="worker-missing-status worker-missing-status-normal inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 border border-slate-200">Normal</span>'
+                }
+              </td>
+              <td class="worker-missing-note px-3 py-2.5 text-slate-600">${m.note || '—'}</td>
+              <td class="px-3 py-2.5 text-right">
+                <span class="worker-missing-count inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 border border-slate-200">x${m.addedCount}</span>
+              </td>
+            </tr>`
+            )
+            .join('')}
+        </tbody>
+      </table>
+    </div>
   `
 }
 
-export function renderMungesat(container: HTMLElement, routeSection = 'mungesat'): void {
+export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat'): void {
   const section: WorkerSection = 'mungesat'
   const active = (key: WorkerSection): string => (section === key ? 'premium-nav-link active' : 'premium-nav-link')
   let allProducts: ProductView[] = []
@@ -80,121 +102,107 @@ export function renderMungesat(container: HTMLElement, routeSection = 'mungesat'
     const toast = document.createElement('div')
     toast.id = 'worker-toast'
     toast.className =
-      'fixed bottom-4 right-4 z-50 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-semibold text-white shadow-lg'
+      'fixed bottom-4 right-4 z-50 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-lg'
     toast.textContent = message
     document.body.appendChild(toast)
     window.setTimeout(() => toast.remove(), 1600)
   }
 
   container.innerHTML = `
-    <div class="premium-shell">
-      <aside class="premium-sidebar hidden md:flex flex-col justify-between px-4 py-5">
+    <div id="worker-shell" class="premium-shell">
+      <aside id="worker-sidebar" class="premium-sidebar premium-drawer flex flex-col justify-between px-4 py-5">
         <div>
-          <div class="flex items-center gap-2 mb-6">
-            <div class="w-9 h-9 rounded-2xl bg-white flex items-center justify-center shadow">
-              <img src="/brand/flowguard/logo.png" alt="FlowGuard logo" class="w-7 h-7 rounded-full object-cover" />
+          <div class="mb-6 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <div class="w-9 h-9 rounded-2xl bg-white flex items-center justify-center shadow">
+                <img src="/brand/flowguard/logo.png" alt="FlowGuard logo" class="w-7 h-7 rounded-full object-cover" />
+              </div>
+              <span class="text-sm font-semibold text-slate-900">FlowInventory</span>
             </div>
-            <span class="text-sm font-semibold text-slate-900">FlowInventory</span>
+            <button type="button" id="worker-nav-toggle" class="premium-nav-toggle worker-nav-toggle-btn shrink-0" aria-label="Hap menynë" aria-expanded="true">
+              ${iconMenu}
+            </button>
           </div>
           <nav class="space-y-1 text-sm">
-            <a href="#/mungesat/mungesat" class="${active('mungesat')}">
-              <span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
-              Mungesat
-            </a>
+            <a href="#/mungesat" class="${active('mungesat')}"><span class="premium-nav-dot"></span>Mungesat</a>
           </nav>
         </div>
-        <div class="flex items-center gap-3 rounded-2xl bg-white/90 border border-sky-100 px-3 py-2.5 shadow-sm">
-          <div class="w-9 h-9 rounded-full bg-sky-200 text-sky-900 flex items-center justify-center text-sm font-semibold">P</div>
+        <div class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+          <div class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-sm font-semibold text-blue-700">P</div>
           <div class="text-xs">
             <div class="text-slate-900 font-medium">Punëtor</div>
             <div class="text-slate-500 text-[11px]">Worker</div>
           </div>
         </div>
       </aside>
+      <div id="worker-sidebar-backdrop" class="premium-sidebar-backdrop hidden"></div>
+      <button
+        type="button"
+        id="worker-logo-reopen"
+        class="worker-logo-reopen hidden"
+        aria-label="Hap menynë"
+        title="Hap menynë"
+      >
+        <img src="/brand/flowguard/logo.png" alt="FlowInventory" class="h-6 w-6 rounded-full object-cover" />
+      </button>
 
       <main class="premium-main px-4 py-4 md:px-6 md:py-5">
-        <header class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4 mb-4">
-          <div class="flex items-center gap-3">
-            ${logoSmall}
-            <div>
-              <p class="text-xs uppercase tracking-wide text-slate-500">${section === 'mungesat' ? 'Mungesat' : section === 'porosite' ? 'Porositë' : section === 'import' ? 'Import' : 'Settings'}</p>
-              <h1 class="text-lg md:text-xl font-semibold text-slate-900">${
-                'Shto mungesa shpejt për sot'
-              }</h1>
+        <header class="premium-header mb-5 border-b border-slate-200 pb-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="flex min-w-0 items-center gap-3">
+              <div class="min-w-0">
+                <p class="text-xs uppercase tracking-wide text-slate-500">Mungesat</p>
+                <h1 class="text-xl md:text-2xl font-semibold tracking-tight text-slate-900">Shto mungesa shpejt (pa sasi)</h1>
+                <p class="mt-1 text-xs text-slate-500">Lista nuk prishet: një rresht për bar, sistemi rrit numrin e shtimeve.</p>
+              </div>
             </div>
-          </div>
-          <div class="flex items-center gap-2">
-            <button type="button" data-theme-toggle="1" class="theme-toggle-chip rounded-full px-2.5 py-1 text-[11px] font-semibold"></button>
-            <button type="button" id="btn-signout" class="premium-btn-ghost inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs">
-              ${iconLogout}
-              Dil
-            </button>
+            <div class="flex items-center gap-2">
+              <button type="button" data-theme-toggle="1" class="theme-toggle-chip rounded-full px-2.5 py-1 text-[11px] font-semibold"></button>
+              <button type="button" id="btn-signout" class="premium-btn-ghost inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs">
+                ${iconLogout}
+                Dil
+              </button>
+            </div>
           </div>
         </header>
 
-        <section class="${section === 'mungesat' ? '' : 'hidden '}grid gap-3 md:grid-cols-3 mb-4">
-          <div class="premium-kpi p-3">
-            <p class="text-[11px] uppercase tracking-wide text-sky-700">Status</p>
-            <p id="worker-stat-total" class="mt-1 text-xl font-semibold text-slate-800">0</p>
-            <p class="text-xs text-slate-500">Mungesa totale të regjistruara sot.</p>
+        <section class="${section === 'mungesat' ? '' : 'hidden '}premium-card mb-4 p-5">
+          <div class="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
+            <span class="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-700">
+              ${iconKpiTotal}
+              Totali: <strong id="worker-stat-total" class="font-semibold text-slate-900">0</strong>
+            </span>
+            <span class="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-700">
+              ${iconKpiProducts}
+              Produkte: <strong id="worker-stat-products" class="font-semibold text-slate-900">0</strong>
+            </span>
+            <span class="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-700">
+              ${iconKpiUrgent}
+              Urgjente: <strong id="worker-stat-urgent" class="font-semibold text-slate-900">0</strong>
+            </span>
           </div>
-          <div class="premium-kpi p-3">
-            <p class="text-[11px] uppercase tracking-wide text-emerald-700">Sinkronizim</p>
-            <p id="worker-stat-products" class="mt-1 text-xl font-semibold text-slate-800">0</p>
-            <p class="text-xs text-slate-500">Produkte aktive në kërkim për shtim.</p>
-          </div>
-          <div class="premium-kpi p-3">
-            <p class="text-[11px] uppercase tracking-wide text-violet-700">Fokus</p>
-            <p id="worker-stat-urgent" class="mt-1 text-xl font-semibold text-slate-800">0</p>
-            <p class="text-xs text-slate-500">Raste të shënuara si urgjente.</p>
+          <div class="space-y-3">
+            <div>
+              <label for="search-bar" class="sr-only">Kërko barin</label>
+              <div class="premium-top-search">
+                <span class="premium-top-search-icon">${iconSearch}</span>
+                <input id="search-bar" type="text" autocomplete="off" placeholder="Kërko barin…" class="premium-top-search-input" aria-label="Kërko barin" />
+              </div>
+            </div>
+            <div class="flex flex-col sm:flex-row sm:items-center gap-2 text-sm text-slate-700">
+              <label class="inline-flex items-center gap-2">
+                <input id="urgent-toggle" type="checkbox" class="h-4 w-4 rounded border-slate-300 bg-white text-red-500 focus:ring-blue-500" />
+                URGJENT
+              </label>
+              <input id="note-input" type="text" placeholder="Shënim (opsional)" class="premium-input flex-1 rounded-lg px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none" aria-label="Shënim opsional" />
+            </div>
+            <div id="search-results" class="mt-2"></div>
           </div>
         </section>
 
-        <section class="${section === 'mungesat' ? '' : 'hidden '}grid gap-4 lg:grid-cols-[minmax(0,1.8fr)_minmax(0,1.1fr)]">
-          <div class="premium-card p-5">
-            <h2 class="text-base font-semibold text-slate-900 mb-1">Shto mungesë bari</h2>
-            <p class="text-xs text-slate-500 mb-4">
-              Kërko barin, zgjidhe nga lista dhe opsionalisht shëno URGJENT ose shto shënim.
-            </p>
-            <div class="space-y-3">
-              <div>
-                <label for="search-bar" class="block text-sm font-medium text-slate-700 mb-1">Kërko barin…</label>
-                <input id="search-bar" type="text" placeholder="Shkruaj emrin e barit..." class="premium-input w-full rounded-lg px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none" />
-              </div>
-              <div class="flex flex-col sm:flex-row sm:items-center gap-2 text-sm text-slate-700">
-                <label class="inline-flex items-center gap-2">
-                  <input id="urgent-toggle" type="checkbox" class="h-4 w-4 rounded border-slate-300 bg-white text-red-500 focus:ring-sky-500" />
-                  URGJENT
-                </label>
-                <input id="note-input" type="text" placeholder="Shënim (opsional)" class="premium-input flex-1 rounded-lg px-3 py-2 text-sm placeholder:text-slate-400 focus:outline-none" />
-              </div>
-              <div id="search-results" class="mt-2"></div>
-            </div>
-          </div>
-
-          <div class="premium-card p-4">
-            <h3 class="text-sm font-semibold text-slate-800 mb-2">Këshilla të shpejta</h3>
-            <ul class="space-y-1 text-xs text-slate-600">
-              <li>• Zgjidh barin nga lista për të shmangur gabimet.</li>
-              <li>• Shëno URGJENT vetëm kur duhet dërgim i menjëhershëm.</li>
-              <li>• Nëse e shton të njëjtin bar, sistemi rrit automatikisht added_count.</li>
-            </ul>
-            <div class="mt-3 grid gap-2">
-              <div class="inline-flex items-center gap-2 text-[11px] text-slate-600 rounded-lg bg-white border border-slate-200 px-2 py-1.5">
-                ${iconBolt}
-                Ky panel është optimizuar për input të shpejtë.
-              </div>
-              <div class="inline-flex items-center gap-2 text-[11px] text-slate-600 rounded-lg bg-white border border-slate-200 px-2 py-1.5">
-                ${iconClock}
-                Mungesat ruhen me datën e sotme automatikisht.
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section class="${section === 'mungesat' ? '' : 'hidden '}premium-card mt-4 p-5">
+        <section class="${section === 'mungesat' ? '' : 'hidden '}premium-card p-5">
           <div class="flex items-center justify-between mb-2">
-            <h2 class="text-base font-semibold text-slate-900">Mungesat e sotme</h2>
+            <h2 class="text-base font-semibold text-slate-900">Lista e mungesave për sot</h2>
             <span class="text-xs text-slate-500">${new Date().toLocaleDateString('sq-AL')}</span>
           </div>
           <div id="missing-list">
@@ -207,8 +215,63 @@ export function renderMungesat(container: HTMLElement, routeSection = 'mungesat'
   `
 
   document.getElementById('btn-signout')!.addEventListener('click', () => signOut())
+  const navToggle = document.getElementById('worker-nav-toggle') as HTMLButtonElement | null
+  const navLogoReopen = document.getElementById('worker-logo-reopen') as HTMLButtonElement | null
+  const shell = document.getElementById('worker-shell') as HTMLElement | null
+  const sidebar = document.getElementById('worker-sidebar') as HTMLElement | null
+  const sidebarBackdrop = document.getElementById('worker-sidebar-backdrop') as HTMLDivElement | null
+
+  const syncNavReopenVisibility = (): void => {
+    if (!shell || !sidebar || !navLogoReopen) return
+    const isDesktop = window.matchMedia('(min-width: 768px)').matches
+    const sidebarOpen = isDesktop
+      ? !shell.classList.contains('sidebar-collapsed')
+      : sidebar.classList.contains('drawer-open')
+    navLogoReopen.classList.toggle('hidden', sidebarOpen)
+    navLogoReopen.setAttribute('aria-expanded', sidebarOpen ? 'true' : 'false')
+  }
+
+  const setSidebarOpen = (open: boolean): void => {
+    if (!sidebar || !sidebarBackdrop || !shell) return
+    const isDesktop = window.matchMedia('(min-width: 768px)').matches
+    if (isDesktop) {
+      shell.classList.toggle('sidebar-collapsed', !open)
+      sidebar.classList.remove('drawer-open')
+      sidebarBackdrop.classList.add('hidden')
+      document.body.classList.remove('overflow-hidden')
+      navToggle?.setAttribute('aria-expanded', open ? 'true' : 'false')
+      syncNavReopenVisibility()
+      return
+    }
+    sidebar.classList.toggle('drawer-open', open)
+    sidebarBackdrop.classList.toggle('hidden', !open)
+    document.body.classList.toggle('overflow-hidden', open)
+    navToggle?.setAttribute('aria-expanded', open ? 'true' : 'false')
+    syncNavReopenVisibility()
+  }
+
+  navToggle?.addEventListener('click', () => {
+    const isDesktop = window.matchMedia('(min-width: 768px)').matches
+    const currentlyOpen = isDesktop
+      ? !Boolean(shell?.classList.contains('sidebar-collapsed'))
+      : Boolean(sidebar?.classList.contains('drawer-open'))
+    setSidebarOpen(!currentlyOpen)
+  })
+  navLogoReopen?.addEventListener('click', () => setSidebarOpen(true))
+  sidebarBackdrop?.addEventListener('click', () => setSidebarOpen(false))
+  window.addEventListener('resize', () => {
+    const isDesktop = window.matchMedia('(min-width: 768px)').matches
+    if (isDesktop) {
+      sidebar?.classList.remove('drawer-open')
+      sidebarBackdrop?.classList.add('hidden')
+      document.body.classList.remove('overflow-hidden')
+    }
+    syncNavReopenVisibility()
+  })
+  syncNavReopenVisibility()
 
   const searchInput = document.getElementById('search-bar') as HTMLInputElement
+  const topSearchInput = document.getElementById('search-bar-top') as HTMLInputElement | null
   const urgentToggle = document.getElementById('urgent-toggle') as HTMLInputElement
   const noteInput = document.getElementById('note-input') as HTMLInputElement
   const resultsDiv = document.getElementById('search-results') as HTMLDivElement
@@ -225,14 +288,8 @@ export function renderMungesat(container: HTMLElement, routeSection = 'mungesat'
   }
 
   function updateResults() {
-    const q = searchInput.value.toLocaleLowerCase('sq-AL').trim()
-    const matches = !q
-      ? []
-      : allProducts.filter((p) => {
-          if (p.name.toLocaleLowerCase('sq-AL').includes(q)) return true
-          if ((p.genericName ?? '').toLocaleLowerCase('sq-AL').includes(q)) return true
-          return p.aliases.some((a) => a.toLocaleLowerCase('sq-AL').includes(q))
-        }).slice(0, 8)
+    const q = searchInput.value.trim()
+    const matches = !q ? [] : rankProductsForWorkerSearch(allProducts, q, 8)
     resultsDiv.innerHTML = renderResults(matches)
 
     const buttons = resultsDiv.querySelectorAll<HTMLButtonElement>('button.select-product')
@@ -251,6 +308,7 @@ export function renderMungesat(container: HTMLElement, routeSection = 'mungesat'
         }
 
         searchInput.value = ''
+        if (topSearchInput) topSearchInput.value = ''
         urgentToggle.checked = false
         noteInput.value = ''
         resultsDiv.innerHTML = ''
@@ -261,7 +319,14 @@ export function renderMungesat(container: HTMLElement, routeSection = 'mungesat'
     })
   }
 
-  searchInput.addEventListener('input', () => updateResults())
+  const applySearch = (value: string): void => {
+    searchInput.value = value
+    if (topSearchInput) topSearchInput.value = value
+    updateResults()
+  }
+
+  searchInput.addEventListener('input', () => applySearch(searchInput.value))
+  topSearchInput?.addEventListener('input', () => applySearch(topSearchInput.value))
   getProducts().then((products) => {
     allProducts = products
     if (statProducts) statProducts.textContent = String(products.length)

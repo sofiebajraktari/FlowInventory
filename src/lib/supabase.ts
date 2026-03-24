@@ -12,7 +12,6 @@ let client: SupabaseClient
 if (hasSupabase) {
   client = createClient(supabaseUrl, supabaseAnonKey)
 } else {
-  // Dummy klient vetëm për të kënaqur tipizimin; nuk përdoret kur mungon konfigurimi.
   client = {} as SupabaseClient
 }
 

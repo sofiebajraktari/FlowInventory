@@ -25,13 +25,15 @@ export function toggleTheme(): ThemeMode {
 }
 
 function getThemeLabel(mode: ThemeMode): string {
-  return mode === 'dark' ? 'Tema: Dark' : 'Tema: Light'
+  return mode === 'dark' ? '☀' : '☾'
 }
 
 export function updateThemeToggleLabels(root: ParentNode = document): void {
   const mode: ThemeMode = document.body.classList.contains('theme-dark') ? 'dark' : 'light'
   root.querySelectorAll<HTMLElement>('[data-theme-toggle]').forEach((el) => {
     el.textContent = getThemeLabel(mode)
+    el.setAttribute('aria-label', mode === 'dark' ? 'Kalo në light mode' : 'Kalo në dark mode')
+    el.setAttribute('title', mode === 'dark' ? 'Light mode' : 'Dark mode')
   })
 }
 

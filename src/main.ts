@@ -1,5 +1,14 @@
 import { supabase, isSupabaseConfigured } from './lib/supabase.js'
-import { getProfile, redirectByRole, hasSession } from './lib/auth.js'
+import {
+  getProfile,
+  redirectByRole,
+  hasSession,
+  finalizeOAuthProfileIfNeeded,
+  isPasswordRecoveryPending,
+  clearPasswordRecoveryPending,
+  setPasswordRecoveryPending,
+  syncPasswordRecoveryFromUrl,
+} from './lib/auth.js'
 import { renderLogin } from './pages/login.js'
 import { renderRegister } from './pages/register.js'
 import { renderMungesat } from './pages/mungesat.js'
@@ -8,7 +17,24 @@ import { applyStoredTheme, bindThemeToggleButtons } from './lib/theme.js'
 import './style.css'
 
 const app = document.getElementById('app')!
-const THEME_TOGGLE_ID = 'theme-toggle-floating'
+
+async function disableLocalServiceWorkerCache(): Promise<void> {
+  const isLocalhost =
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname === '::1'
+  if (!isLocalhost) return
+
+  if ('serviceWorker' in navigator) {
+    const regs = await navigator.serviceWorker.getRegistrations()
+    await Promise.all(regs.map((reg) => reg.unregister()))
+  }
+
+  if ('caches' in window) {
+    const keys = await caches.keys()
+    await Promise.all(keys.map((key) => caches.delete(key)))
+  }
+}
 function getRoute(): string {
   const hash = window.location.hash.slice(1) || '/'
   return hash.startsWith('/') ? hash : '/' + hash
@@ -22,7 +48,12 @@ function getOwnerSection(route: string): 'mungesat' | 'porosite' | 'import' {
 
 async function render(): Promise<void> {
   applyStoredTheme()
+  syncPasswordRecoveryFromUrl()
   const route = getRoute()
+  if (isPasswordRecoveryPending() && route !== '/kycu') {
+    window.location.hash = '#/kycu'
+    return
+  }
   if (!isSupabaseConfigured) {
     app.innerHTML = `
       <div class="min-h-[calc(100vh-2rem)] flex items-center justify-center p-4">
@@ -39,8 +70,16 @@ async function render(): Promise<void> {
   }
 
   if (route === '/kycu' || route === '/regjistrohu') {
-    if (await hasSession()) {
-      const profile = await getProfile()
+    const hasUserSession = await hasSession()
+    const recoveryMode = isPasswordRecoveryPending() && route === '/kycu' && hasUserSession
+    if (isPasswordRecoveryPending() && route === '/kycu' && !hasUserSession) {
+      clearPasswordRecoveryPending()
+    }
+    if (!recoveryMode && hasUserSession) {
+      let profile = await getProfile()
+      if (!profile) {
+        profile = await finalizeOAuthProfileIfNeeded()
+      }
       if (profile) {
         redirectByRole(profile.role)
         return
@@ -100,20 +139,18 @@ function renderWithGuard(): void {
   })
 }
 
-function ensureThemeToggle(): void {
-  let btn = document.getElementById(THEME_TOGGLE_ID) as HTMLButtonElement | null
-  if (!btn) {
-    btn = document.createElement('button')
-    btn.id = THEME_TOGGLE_ID
-    btn.className =
-      'theme-toggle-chip fixed bottom-4 left-4 z-50 rounded-full px-3 py-2 text-xs font-semibold shadow-lg'
-    btn.setAttribute('data-theme-toggle', '1')
-    document.body.appendChild(btn)
-  }
-  bindThemeToggleButtons(document)
-}
-
-window.addEventListener('hashchange', () => renderWithGuard())
-if (isSupabaseConfigured) supabase.auth.onAuthStateChange(() => renderWithGuard())
-ensureThemeToggle()
-renderWithGuard()
+disableLocalServiceWorkerCache()
+  .catch((err) => console.warn('Local SW cleanup failed:', err))
+  .finally(() => {
+    window.addEventListener('hashchange', () => renderWithGuard())
+    if (isSupabaseConfigured) {
+      supabase.auth.onAuthStateChange((event) => {
+        if (event === 'PASSWORD_RECOVERY') {
+          setPasswordRecoveryPending()
+          if (window.location.hash !== '#/kycu') window.location.hash = '#/kycu'
+        }
+        renderWithGuard()
+      })
+    }
+    renderWithGuard()
+  })

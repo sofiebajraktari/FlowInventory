@@ -2,6 +2,7 @@ import { signOut } from '../lib/auth.js'
 import { isSupabaseConfigured, supabase } from '../lib/supabase.js'
 import { getProfile } from '../lib/auth.js'
 import { getMockUser } from '../types.js'
+import { jsPDF } from 'jspdf'
 import {
   addProduct,
   deleteShortage,
@@ -11,17 +12,46 @@ import {
   getTodayShortages,
   markOrderAsSent,
   updateShortageMeta,
-  updateSuggestedQty,
   type ProductView,
   type ShortageView,
   type OwnerOrder,
 } from '../lib/data.js'
 
-const iconLogout = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>`
-const iconTrend = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 17l4-4 4 4 5-5M3 3v18h18" /></svg>`
-const iconBox = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" /></svg>`
+const iconCopy = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2M10 20h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>`
+const iconPdf = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9l-5-5H7a2 2 0 00-2 2v13a2 2 0 002 2z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 3v6h6" /></svg>`
+const iconWhatsapp = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21l2.2-6.2A8.9 8.9 0 1112 21a8.8 8.8 0 01-4.1-1L3 21z" /></svg>`
+const iconCheck = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>`
+const iconEdit = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>`
+const iconTrash = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 7h12M9 7V4h6v3m-7 4v6m4-6v6m4-6v6M8 20h8a2 2 0 002-2V7H6v11a2 2 0 002 2z" /></svg>`
+const iconKpiShortage = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-6m3 6V7m3 10v-4m3 8H6a2 2 0 01-2-2V5a2 2 0 012-2h12a2 2 0 012 2v14a2 2 0 01-2 2z" /></svg>`
+const iconKpiOrders = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6M7 4h10l2 2v14H5V6l2-2z" /></svg>`
+const iconKpiAlert = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4m0 4h.01" /></svg>`
+const iconKpiProducts = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" /></svg>`
+const iconSearch = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 117.5-7.5 7.5 7.5 0 01-7.5 7.5z" /></svg>`
+const iconMenu = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>`
 const SUPPLIER_PHONE_STORAGE_KEY = 'flowinventory_supplier_phones'
+const SHORTAGE_SORT_STORAGE_KEY = 'flowinventory-owner-shortage-sort'
 type OwnerSection = 'mungesat' | 'porosite' | 'import'
+
+function readStoredShortageSort(): 'supplier' | 'name' {
+  try {
+    const v = sessionStorage.getItem(SHORTAGE_SORT_STORAGE_KEY)
+    return v === 'name' ? 'name' : 'supplier'
+  } catch {
+    return 'supplier'
+  }
+}
+
+function persistShortageSort(value: 'supplier' | 'name'): void {
+  try {
+    sessionStorage.setItem(SHORTAGE_SORT_STORAGE_KEY, value)
+  } catch {
+  }
+}
+
+function compareAlbanian(a: string, b: string): number {
+  return a.localeCompare(b, 'sq-AL', { sensitivity: 'base', numeric: true })
+}
 
 export function renderPronari(container: HTMLElement, routeSection = 'mungesat'): void {
   const section: OwnerSection =
@@ -41,10 +71,24 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
   let shortages: ShortageView[] = []
   let products: ProductView[] = []
   let searchQuery = ''
-  let sortBy: 'supplier' | 'name' = 'supplier'
+  let sortBy: 'supplier' | 'name' = readStoredShortageSort()
   let generatedOrders: OwnerOrder[] = []
+  let allOrders: OwnerOrder[] = []
+  let showAllOrders = false
   let pendingImportRows: ImportRow[] = []
   let pendingImportIssues: string[] = []
+  let importTab: 'manual' | 'file' = 'file'
+  let productQuery = ''
+  let productSortBy: 'name' | 'supplier' | 'category' = 'name'
+  let ownerProductCategoryFilter: 'barna' | 'all' | 'front' = 'barna'
+  let lastImportFileName = ''
+  const suggestedQtyStorageKey = (() => {
+    const d = new Date()
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `flowinventory-owner-suggested-qty-${y}-${m}-${day}`
+  })()
   let accountInfo: {
     firstName: string
     lastName: string
@@ -54,17 +98,54 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
     provider: string
     sessionMode: string
   } = {
-    firstName: 'Valdet',
-    lastName: 'Mulaj',
+    firstName: '',
+    lastName: '',
     email: '—',
-    role: 'OWNER',
+    role: '',
     userId: '—',
     provider: 'email',
     sessionMode: isSupabaseConfigured ? 'Supabase' : 'Demo',
   }
 
+  function readSuggestedQtyDraft(): Record<string, number> {
+    try {
+      const raw = localStorage.getItem(suggestedQtyStorageKey)
+      if (!raw) return {}
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+      const clean: Record<string, number> = {}
+      for (const [id, value] of Object.entries(parsed)) {
+        const qty = Number(value)
+        if (Number.isFinite(qty) && qty > 0) clean[id] = Math.floor(qty)
+      }
+      return clean
+    } catch {
+      return {}
+    }
+  }
+
+  function applySuggestedQtyDraft(rows: ShortageView[]): ShortageView[] {
+    const draft = readSuggestedQtyDraft()
+    return rows.map((row) => {
+      const qty = draft[row.id]
+      if (!qty) return row
+      return { ...row, suggestedQty: Math.max(1, qty) }
+    })
+  }
+
+  function persistSuggestedQtyDraft(rows: ShortageView[]): void {
+    const payload: Record<string, number> = {}
+    rows.forEach((row) => {
+      payload[row.id] = Math.max(1, Math.floor(Number(row.suggestedQty) || 1))
+    })
+    localStorage.setItem(suggestedQtyStorageKey, JSON.stringify(payload))
+  }
+
+  function clearSuggestedQtyDraft(): void {
+    localStorage.removeItem(suggestedQtyStorageKey)
+  }
+
   async function reloadShortages(): Promise<void> {
-    shortages = await getTodayShortages()
+    shortages = applySuggestedQtyDraft(await getTodayShortages())
     refreshUI()
   }
 
@@ -89,9 +170,10 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
     ])
     const user = userData.user
     const provider = user?.app_metadata?.provider ?? user?.identities?.[0]?.provider ?? 'email'
+    const fallbackName = (user?.email ?? '').split('@')[0]?.trim() || 'Perdorues'
     accountInfo = {
-      firstName: String(user?.user_metadata?.first_name ?? 'Valdet'),
-      lastName: String(user?.user_metadata?.last_name ?? 'Mulaj'),
+      firstName: String(user?.user_metadata?.first_name ?? fallbackName),
+      lastName: String(user?.user_metadata?.last_name ?? ''),
       email: user?.email ?? '—',
       role: profile?.role ?? 'OWNER',
       userId: user?.id ?? '—',
@@ -106,7 +188,7 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
     const toast = document.createElement('div')
     toast.id = 'owner-toast'
     toast.className =
-      'fixed bottom-4 right-4 z-50 rounded-xl bg-emerald-500 px-4 py-2 text-xs font-semibold text-white shadow-lg'
+      'fixed bottom-4 right-4 z-50 rounded-xl bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-lg'
     toast.textContent = message
     document.body.appendChild(toast)
     window.setTimeout(() => toast.remove(), 1800)
@@ -118,6 +200,27 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
       .replace(/[^a-z0-9]/g, '')
+  }
+
+  function splitCsvLine(line: string): string[] {
+    const out: string[] = []
+    let cur = ''
+    let inQuotes = false
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i]
+      if (c === '"') {
+        inQuotes = !inQuotes
+        continue
+      }
+      if (c === ',' && !inQuotes) {
+        out.push(cur.trim())
+        cur = ''
+        continue
+      }
+      cur += c
+    }
+    out.push(cur.trim())
+    return out
   }
 
   function pickByKeys(row: Record<string, unknown>, keys: string[]): string {
@@ -183,18 +286,20 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
                 <th class="px-2 py-1 text-left">Cmimi fundit</th>
                 <th class="px-2 py-1 text-left">Data cmimit</th>
                 <th class="px-2 py-1 text-left">Default qty</th>
+                <th class="px-2 py-1 text-left">Aliases</th>
                 <th class="px-2 py-1 text-left">Category</th>
               </tr>
             </thead>
             <tbody>
               ${pendingImportRows.slice(0, 20).map((r) => `
-                <tr class="border-t border-slate-200">
+                <tr class="border-t border-slate-200 hover:bg-slate-50/70 transition-colors">
                   <td class="px-2 py-1">${r.name}</td>
                   <td class="px-2 py-1">${r.supplier}</td>
                   <td class="px-2 py-1">${r.producerName ?? '—'}</td>
                   <td class="px-2 py-1">${r.lastPaidPrice ?? '—'}</td>
                   <td class="px-2 py-1">${r.lastPriceDate ?? '—'}</td>
                   <td class="px-2 py-1">${r.defaultOrderQty ?? '—'}</td>
+                  <td class="px-2 py-1 max-w-32 truncate" title="${(r.aliases ?? []).join(', ')}">${(r.aliases ?? []).length ? (r.aliases ?? []).join(', ') : '—'}</td>
                   <td class="px-2 py-1">${r.category}</td>
                 </tr>`).join('')}
             </tbody>
@@ -204,9 +309,13 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
 
     return `
       <div class="space-y-2">
-        <div class="flex items-center justify-between text-[11px] text-slate-600">
-          <span>Preview valid: <strong>${pendingImportRows.length}</strong></span>
-          <button data-action="apply-import" class="rounded-lg border border-emerald-300 bg-emerald-50 px-2 py-1 font-semibold text-emerald-700 hover:bg-emerald-100 ${pendingImportRows.length ? '' : 'opacity-50 pointer-events-none'}">
+        <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
+          <div class="flex items-center gap-2">
+            <span class="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700">Valid: ${pendingImportRows.length}</span>
+            <span class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-semibold text-amber-700">Gabime: ${pendingImportIssues.length}</span>
+            ${lastImportFileName ? `<span class="truncate max-w-50 text-slate-500" title="${lastImportFileName}">${lastImportFileName}</span>` : ''}
+          </div>
+          <button data-action="apply-import" class="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 font-semibold text-blue-700 hover:bg-blue-100 ${pendingImportRows.length ? '' : 'opacity-50 pointer-events-none'}">
             Apliko importin
           </button>
         </div>
@@ -214,6 +323,40 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
         ${rowsHtml}
       </div>
     `
+  }
+
+  function getFilteredProducts(): ProductView[] {
+    const q = productQuery.toLocaleLowerCase('sq-AL').trim()
+    let rows = products
+    if (ownerProductCategoryFilter === 'barna') {
+      rows = rows.filter((p) => p.category === 'barna')
+    } else if (ownerProductCategoryFilter === 'front') {
+      rows = rows.filter((p) => p.category === 'front')
+    }
+    if (q) {
+      rows = rows.filter((p) => {
+        const name = p.name.toLocaleLowerCase('sq-AL')
+        const supplier = p.supplierName.toLocaleLowerCase('sq-AL')
+        const category = p.category.toLocaleLowerCase('sq-AL')
+        const aliases = p.aliases.join(' ').toLocaleLowerCase('sq-AL')
+        return name.includes(q) || supplier.includes(q) || category.includes(q) || aliases.includes(q)
+      })
+    }
+    return [...rows].sort((a, b) => {
+      const nameA = a.name.toLocaleLowerCase('sq-AL')
+      const nameB = b.name.toLocaleLowerCase('sq-AL')
+      const supplierA = a.supplierName.toLocaleLowerCase('sq-AL')
+      const supplierB = b.supplierName.toLocaleLowerCase('sq-AL')
+      const categoryA = a.category.toLocaleLowerCase('sq-AL')
+      const categoryB = b.category.toLocaleLowerCase('sq-AL')
+      if (productSortBy === 'supplier') {
+        return compareAlbanian(supplierA, supplierB) || compareAlbanian(nameA, nameB)
+      }
+      if (productSortBy === 'category') {
+        return compareAlbanian(categoryA, categoryB) || compareAlbanian(nameA, nameB)
+      }
+      return compareAlbanian(nameA, nameB) || compareAlbanian(supplierA, supplierB)
+    })
   }
 
   function getSupplierPhones(): Record<string, string> {
@@ -236,7 +379,7 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
   function openWhatsAppPhoneModal(supplier: string, initial = ''): Promise<string | null> {
     return new Promise((resolve) => {
       const overlay = document.createElement('div')
-      overlay.className = 'fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4'
+      overlay.className = 'fixed inset-0 z-[70] bg-slate-900/18 flex items-center justify-center p-4'
       overlay.innerHTML = `
         <div class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
           <h3 class="text-lg font-semibold text-slate-900 mb-1">Numri i WhatsApp</h3>
@@ -245,7 +388,7 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
           </p>
           <label class="text-sm text-slate-700 block">
             Numri
-            <input id="owner-wa-phone" type="text" value="${initial}" placeholder="383..." class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500" />
+            <input id="owner-wa-phone" type="text" value="${initial}" placeholder="383..." class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </label>
           <div class="mt-4 flex items-center justify-end gap-2">
             <button type="button" id="owner-wa-cancel" class="premium-btn-ghost rounded-xl px-4 py-2 text-sm font-medium">Anulo</button>
@@ -280,7 +423,7 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
   } | null> {
     return new Promise((resolve) => {
       const overlay = document.createElement('div')
-      overlay.className = 'fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4'
+      overlay.className = 'fixed inset-0 z-[70] bg-slate-900/18 flex items-center justify-center p-4'
       overlay.innerHTML = `
         <div class="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
           <h3 class="text-lg font-semibold text-slate-900 mb-1">Përditëso mungesën</h3>
@@ -288,18 +431,18 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
           <div class="grid gap-3 md:grid-cols-2">
             <label class="text-sm text-slate-700">
               Sasia për porosi
-              <input id="owner-edit-qty" type="number" min="1" value="${initial.suggestedQty}" class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500" />
+              <input id="owner-edit-qty" type="number" min="1" value="${initial.suggestedQty}" class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </label>
             <label class="text-sm text-slate-700 flex items-end">
               <span class="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2">
-                <input id="owner-edit-urgent" type="checkbox" ${initial.urgent ? 'checked' : ''} class="h-4 w-4 rounded border-slate-300 text-red-600 focus:ring-sky-500" />
+                <input id="owner-edit-urgent" type="checkbox" ${initial.urgent ? 'checked' : ''} class="h-4 w-4 rounded border-slate-300 text-red-600 focus:ring-blue-500" />
                 URGJENT
               </span>
             </label>
           </div>
           <label class="mt-3 block text-sm text-slate-700">
             Shënimi
-            <textarea id="owner-edit-note" class="mt-1 w-full min-h-48 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500" placeholder="Shkruaj shënimin...">${initial.note ?? ''}</textarea>
+            <textarea id="owner-edit-note" class="mt-1 w-full min-h-48 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Shkruaj shënimin...">${initial.note ?? ''}</textarea>
           </label>
           <div class="mt-4 flex items-center justify-end gap-2">
             <button type="button" id="owner-edit-cancel" class="premium-btn-ghost rounded-xl px-4 py-2 text-sm font-medium">Anulo</button>
@@ -339,7 +482,7 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
   function openConfirmModal(title: string, description: string): Promise<boolean> {
     return new Promise((resolve) => {
       const overlay = document.createElement('div')
-      overlay.className = 'fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4'
+      overlay.className = 'fixed inset-0 z-[70] bg-slate-900/18 flex items-center justify-center p-4'
       overlay.innerHTML = `
         <div class="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
           <h3 class="text-lg font-semibold text-slate-900 mb-1">${title}</h3>
@@ -369,22 +512,29 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
     const q = searchQuery.toLocaleLowerCase('sq-AL').trim()
     let rows = shortages.filter((s) => s.suggestedQty > 0)
     if (q) {
-      rows = rows.filter((s) => s.productName.toLocaleLowerCase('sq-AL').includes(q))
+      rows = rows.filter((s) => {
+        const product = s.productName.toLocaleLowerCase('sq-AL')
+        const supplier = s.supplierName.toLocaleLowerCase('sq-AL')
+        return product.includes(q) || supplier.includes(q)
+      })
     }
+    const sortText = (value: string): string => value.toLocaleLowerCase('sq-AL').trim()
     rows.sort((a, b) => {
-      if (sortBy === 'name') return a.productName.localeCompare(b.productName, 'sq-AL')
-      return (
-        a.supplierName.localeCompare(b.supplierName, 'sq-AL') ||
-        a.productName.localeCompare(b.productName, 'sq-AL')
-      )
+      const nameA = sortText(a.productName)
+      const nameB = sortText(b.productName)
+      const supplierA = sortText(a.supplierName)
+      const supplierB = sortText(b.supplierName)
+      if (sortBy === 'name') {
+        return compareAlbanian(nameA, nameB) || compareAlbanian(supplierA, supplierB)
+      }
+      return compareAlbanian(supplierA, supplierB) || compareAlbanian(nameA, nameB)
     })
     return rows
   }
 
   function buildReceipt(order: OwnerOrder): string {
     const date = new Date().toLocaleString('sq-AL')
-    return `FARMACIA VALDET
-POROSI MUNGESASH
+    return `POROSI MUNGESASH
 Data: ${date}
 Furnitori: ${order.supplier}
 ID: #${order.id}
@@ -395,7 +545,6 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
   }
 
   async function downloadOrderPdf(order: OwnerOrder): Promise<void> {
-    const { jsPDF } = await import('jspdf')
     const doc = new jsPDF({ unit: 'mm', format: 'a4' })
     const receiptText = buildReceipt(order)
     const lines = doc.splitTextToSize(receiptText, 180)
@@ -409,15 +558,20 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
   function renderShortagesBody(): string {
     const rows = getFilteredRows()
     if (!rows.length) {
-      return `<tr><td colspan="4" class="px-3 py-4 text-center text-slate-500">Nuk ka rezultate për këtë kërkim.</td></tr>`
+      return `<tr><td colspan="5" class="px-3 py-8 text-center">
+        <div class="premium-empty">
+          <div class="premium-empty-title">Nuk ka rezultate për këtë kërkim</div>
+          <p class="premium-empty-copy">Provo me një emër tjetër ose ndrysho renditjen.</p>
+        </div>
+      </td></tr>`
     }
     return rows
       .map(
         (s) => `
-      <tr class="border-t border-slate-200">
-        <td class="px-3 py-2">
+      <tr class="owner-shortage-row border-t border-slate-200 hover:bg-slate-50/70 transition-colors">
+        <td class="px-3 py-3">
           <div class="flex items-center gap-2">
-            <div class="h-7 w-7 rounded-full bg-sky-100 border border-sky-200 flex items-center justify-center text-[10px] font-semibold text-sky-700">
+            <div class="owner-product-badge h-7 w-7 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-[10px] font-semibold text-blue-700">
               ${s.productName.slice(0, 2).toUpperCase()}
             </div>
             <div>
@@ -426,72 +580,148 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             </div>
           </div>
         </td>
-        <td class="px-3 py-2">
-          <div class="inline-flex items-center rounded-full border border-slate-300 bg-white px-2 py-1 gap-1">
-            <button data-action="decrement" data-id="${s.id}" class="text-slate-600 text-xs px-1 hover:text-slate-900">-</button>
-            <span class="w-6 text-center text-slate-800 text-xs">${s.suggestedQty}</span>
-            <button data-action="increment" data-id="${s.id}" class="text-slate-600 text-xs px-1 hover:text-slate-900">+</button>
+        <td class="px-3 py-3">
+          <div class="owner-qty-pill inline-flex items-center rounded-full border border-slate-300 bg-white px-2 py-1 gap-1">
+            <button data-action="decrement" data-id="${s.id}" class="owner-qty-btn text-slate-600 text-xs px-1 hover:text-slate-900">-</button>
+            <span class="owner-qty-value w-6 text-center text-slate-800 text-xs">${s.suggestedQty}</span>
+            <button data-action="increment" data-id="${s.id}" class="owner-qty-btn text-slate-600 text-xs px-1 hover:text-slate-900">+</button>
           </div>
         </td>
-        <td class="px-3 py-2 text-slate-700 text-xs">${s.supplierName}</td>
-        <td class="px-3 py-2">
-          <div class="flex items-center gap-1">
-            <span class="rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+        <td class="owner-supplier-cell px-3 py-3 text-slate-700 text-xs">${s.supplierName}</td>
+        <td class="px-3 py-3">
+          <div class="flex items-center gap-2">
+            <span class="owner-status-pill rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
               s.urgent
-                ? 'bg-red-100 text-red-700 border-red-200'
-                : 'bg-slate-100 text-slate-600 border-slate-200'
+                ? 'owner-status-urgent bg-red-100 text-red-700 border-red-200'
+                : 'owner-status-normal bg-slate-100 text-slate-600 border-slate-200'
             }">
               ${s.urgent ? 'URGJENT' : 'Normal'}
             </span>
-            ${s.note ? `<span class="text-[11px] text-slate-600">${s.note}</span>` : ''}
-            <button data-action="edit-note" data-id="${s.id}" title="Ndrysho mungesën" class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[16px] leading-none text-black hover:bg-slate-50">✎</button>
-            <button data-action="delete-shortage" data-id="${s.id}" title="Fshi mungesën" class="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[16px] leading-none text-black hover:bg-red-50">✖</button>
+            ${s.note ? `<span class="owner-note-text text-[11px] text-slate-600 max-w-40 truncate">${s.note}</span>` : ''}
           </div>
         </td>
-        <td class="px-3 py-2 text-right">
-          <button data-action="copy-shortage-name" data-id="${s.id}" class="text-[10px] text-slate-500 hover:text-slate-800">⋯</button>
+        <td class="px-3 py-3 text-right">
+          <div class="inline-flex items-center gap-1.5">
+            <button data-action="copy-shortage-name" data-id="${s.id}" title="Kopjo detajet" class="ui-icon-btn">${iconCopy}</button>
+            <button data-action="edit-note" data-id="${s.id}" title="Ndrysho mungesën" class="ui-icon-btn">${iconEdit}</button>
+            <button data-action="delete-shortage" data-id="${s.id}" title="Fshi mungesën" class="ui-icon-btn">${iconTrash}</button>
+          </div>
         </td>
       </tr>`
       )
       .join('')
   }
 
-  function renderOrdersPanel(): string {
-    if (!generatedOrders.length) {
-      return `<div class="text-xs text-slate-500">Nuk ka porosi për dërgim.</div>`
-    }
-    return generatedOrders
-      .map(
-        (o) => `
-        <div class="rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
-          <div class="flex items-center justify-between text-xs">
-            <div>
-              <span class="font-semibold text-sky-700">#${o.id}</span>
-              <span class="ml-1 text-slate-700">${o.supplier}</span>
-            </div>
-            <div class="flex items-center gap-1">
-              <button data-action="copy" data-order-id="${o.id}" class="rounded-lg bg-emerald-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-500">
-                Kopjo reciptin
-              </button>
-              <button data-action="download-pdf" data-order-id="${o.id}" class="rounded-lg border border-sky-300 bg-sky-50 px-2 py-1 text-[11px] font-semibold text-sky-700 hover:bg-sky-100">
-                Shkarko PDF
-              </button>
-              <button data-action="whatsapp" data-order-id="${o.id}" class="rounded-lg border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100">
-                WhatsApp
-              </button>
-              <button data-action="mark-sent" data-order-id="${o.id}" class="rounded-lg border border-slate-300 px-2 py-1 text-[11px] font-semibold ${
-                o.status === 'SENT' ? 'text-emerald-700 bg-emerald-50' : 'text-slate-700 bg-white hover:bg-slate-50'
-              }">
-                ${o.status === 'SENT' ? 'Dërguar' : 'Shëno dërguar'}
-              </button>
-            </div>
-          </div>
-          <ul class="mt-1.5 space-y-0.5 text-[11px] text-slate-600">
-            ${o.items.map((it) => `<li>• ${it}</li>`).join('')}
-          </ul>
-        </div>`
+  function setOrderStatus(
+    orderId: number,
+    status: OwnerOrder['status'],
+    dbId?: string
+  ): void {
+    const update = (orders: OwnerOrder[]): OwnerOrder[] => {
+      const idx = orders.findIndex((o) =>
+        dbId ? o.dbId === dbId : o.id === orderId
       )
-      .join('')
+      if (idx === -1) return orders
+      const copy = [...orders]
+      copy[idx] = { ...copy[idx], status }
+      return copy
+    }
+    generatedOrders = update(generatedOrders)
+    allOrders = update(allOrders)
+  }
+
+  function getOrderById(orderId: number): OwnerOrder | undefined {
+    return generatedOrders.find((o) => o.id === orderId) ?? allOrders.find((o) => o.id === orderId)
+  }
+
+  function resolveOrderFromBtn(btn: HTMLButtonElement): OwnerOrder | undefined {
+    const dbId = btn.dataset.orderDbId?.trim()
+    if (dbId) {
+      return (
+        generatedOrders.find((o) => o.dbId === dbId) ??
+        allOrders.find((o) => o.dbId === dbId)
+      )
+    }
+    const orderId = Number(btn.dataset.orderId)
+    if (!Number.isFinite(orderId)) return undefined
+    return getOrderById(orderId)
+  }
+
+  function renderOrderStatus(status: OwnerOrder['status']): string {
+    if (status === 'SENT') {
+      return `<span class="owner-order-status owner-order-status-sent inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">E dërguar</span>`
+    }
+    if (status === 'FAILED') {
+      return `<span class="owner-order-status owner-order-status-failed inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">Dështoi</span>`
+    }
+    return `<span class="owner-order-status owner-order-status-pending inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Skicë</span>`
+  }
+
+  function renderOrdersPanel(): string {
+    const ordersToRender = showAllOrders ? allOrders : generatedOrders
+    if (!ordersToRender.length) {
+      return `<div class="premium-empty">
+        <div class="premium-empty-title">${showAllOrders ? 'Nuk ka porosi në histori' : 'Nuk ka porosi të gjeneruara tani'}</div>
+        <p class="premium-empty-copy">${
+          showAllOrders
+            ? 'Ende nuk ka porosi të ruajtura.'
+            : 'Kliko «Gjenero porositë sipas furnitorit» për të krijuar porositë.'
+        }</p>
+      </div>`
+    }
+    return `
+      <div class="owner-orders-table-wrap overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <table class="min-w-full text-xs">
+          <thead class="owner-orders-head ui-table-head bg-slate-100 text-slate-700">
+            <tr>
+              <th class="px-3 py-2.5 text-left font-semibold">ID</th>
+              <th class="px-3 py-2.5 text-left font-semibold">Produkti</th>
+              <th class="px-3 py-2.5 text-left font-semibold">Sasia</th>
+              <th class="px-3 py-2.5 text-left font-semibold">Status</th>
+              <th class="px-3 py-2.5 text-right font-semibold">Veprime</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${ordersToRender
+              .map((o) => {
+                const qtySum = o.items.reduce((sum, item) => {
+                  const m = item.match(/^(\d+)/)
+                  if (!m) return sum
+                  return sum + Number(m[1])
+                }, 0)
+                const productList = o.items.map((item) => item.replace(/^\d+\s*[x×]\s*/i, '')).join(', ')
+                return `
+                  <tr class="owner-order-row border-t border-slate-200 hover:bg-slate-50/80 transition-colors">
+                    <td class="owner-order-id px-3 py-3 font-semibold text-blue-700">#${o.id}</td>
+                    <td class="owner-order-product-cell px-3 py-3 text-slate-700">
+                      <p class="owner-order-product-name font-medium text-slate-800">${o.supplier}</p>
+                      <p class="owner-order-product-list mt-0.5 max-w-[320px] truncate text-[11px] text-slate-500">${productList || '—'}</p>
+                    </td>
+                    <td class="owner-order-qty px-3 py-3 text-slate-700 font-medium">${qtySum || o.items.length}</td>
+                    <td class="px-3 py-3">${renderOrderStatus(o.status)}</td>
+                    <td class="px-3 py-3">
+                      <div class="flex items-center justify-end gap-1.5">
+                        <button data-action="copy" data-order-id="${o.id}" data-order-db-id="${o.dbId ?? ''}" title="Kopjo reciptin për WhatsApp" aria-label="Kopjo reciptin për WhatsApp" class="ui-icon-btn">
+                          ${iconCopy}
+                        </button>
+                        <button data-action="download-pdf" data-order-id="${o.id}" data-order-db-id="${o.dbId ?? ''}" title="Shkarko PDF" aria-label="Shkarko PDF" class="ui-icon-btn">
+                          ${iconPdf}
+                        </button>
+                        <button data-action="whatsapp" data-order-id="${o.id}" data-order-db-id="${o.dbId ?? ''}" title="Hap WhatsApp me reciptin" aria-label="Hap WhatsApp me reciptin" class="ui-icon-btn">
+                          ${iconWhatsapp}
+                        </button>
+                        <button data-action="mark-sent" data-order-id="${o.id}" data-order-db-id="${o.dbId ?? ''}" title="Shëno porosinë si E dërguar" aria-label="Shëno porosinë si E dërguar" class="ui-icon-btn">
+                          ${iconCheck}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>`
+              })
+              .join('')}
+          </tbody>
+        </table>
+      </div>
+    `
   }
 
   function refreshUI(): void {
@@ -503,145 +733,210 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     if (ordersList) ordersList.innerHTML = renderOrdersPanel()
     if (importPreview) importPreview.innerHTML = renderImportPreview()
     if (productsList) {
-      productsList.innerHTML = products
-        .slice(0, 8)
+      const productRows = getFilteredProducts()
+      productsList.innerHTML = productRows
+        .slice(0, 40)
         .map(
           (p) =>
-            `<li class="flex items-center justify-between gap-2 text-[11px] py-1 border-b border-slate-700/40">
-              <span class="text-slate-700">${p.name}</span>
-              <span class="text-slate-500">${p.supplierName}</span>
+            `<li class="flex items-center justify-between gap-2 border-b border-slate-200 py-2 text-xs">
+              <span class="font-medium text-slate-700">${p.name}</span>
+              <span class="text-slate-500">${p.supplierName} • ${p.category === 'front' ? 'Front' : 'Barna'}</span>
             </li>`
         )
         .join('')
       const count = document.getElementById('owner-products-count')
-      if (count) count.textContent = `${products.length}`
+      if (count) count.textContent = `${productRows.length}/${products.length}`
     }
     const countTop = document.getElementById('owner-products-count-top')
     if (countTop) countTop.textContent = `${products.length}`
     const statShortages = document.getElementById('owner-stat-shortages')
     const statOrders = document.getElementById('owner-stat-orders')
     const statUrgent = document.getElementById('owner-stat-urgent')
+    const sortHint = document.getElementById('owner-sort-hint')
     if (statShortages) statShortages.textContent = String(shortages.length)
-    if (statOrders) statOrders.textContent = String(generatedOrders.length)
+    if (statOrders) statOrders.textContent = String((showAllOrders ? allOrders : generatedOrders).length)
     if (statUrgent) statUrgent.textContent = String(shortages.filter((s) => s.urgent).length)
+    if (sortHint) sortHint.textContent = sortBy === 'name' ? 'Renditur sipas emrit' : 'Renditur sipas furnitorit'
+    const sortSelectEl = document.getElementById('owner-sort') as HTMLSelectElement | null
+    if (sortSelectEl) {
+      const next = sortBy === 'name' ? 'name' : 'supplier'
+      if (sortSelectEl.value !== next) sortSelectEl.value = next
+    }
+    const importTabManual = document.getElementById('owner-import-tab-manual')
+    const importTabFile = document.getElementById('owner-import-tab-file')
+    if (importTabManual && importTabFile) {
+      importTabManual.className = importTab === 'manual' ? 'premium-btn-primary rounded-lg px-3 py-1.5 text-xs font-semibold' : 'premium-btn-ghost rounded-lg px-3 py-1.5 text-xs font-medium'
+      importTabFile.className = importTab === 'file' ? 'premium-btn-primary rounded-lg px-3 py-1.5 text-xs font-semibold' : 'premium-btn-ghost rounded-lg px-3 py-1.5 text-xs font-medium'
+    }
+    const productsSearchInput = document.getElementById('owner-products-search') as HTMLInputElement | null
+    const productsSortSelect = document.getElementById('owner-products-sort') as HTMLSelectElement | null
+    const productsCategoryFilter = document.getElementById(
+      'owner-products-category-filter'
+    ) as HTMLSelectElement | null
+    if (productsSearchInput && productsSearchInput.value !== productQuery) productsSearchInput.value = productQuery
+    if (productsSortSelect && productsSortSelect.value !== productSortBy) productsSortSelect.value = productSortBy
+    if (productsCategoryFilter && productsCategoryFilter.value !== ownerProductCategoryFilter) {
+      productsCategoryFilter.value = ownerProductCategoryFilter
+    }
 
     const sidebarAvatar = document.getElementById('owner-sidebar-avatar')
     const sidebarName = document.getElementById('owner-sidebar-name')
+    const sidebarRole = document.getElementById('owner-sidebar-role')
     const menuAvatar = document.getElementById('owner-menu-avatar')
+    const displayName = `${accountInfo.firstName} ${accountInfo.lastName}`.trim()
     if (sidebarAvatar) sidebarAvatar.textContent = (accountInfo.firstName || 'O').slice(0, 1).toUpperCase()
     if (menuAvatar) menuAvatar.textContent = (accountInfo.firstName || 'O').slice(0, 1).toUpperCase()
-    if (sidebarName) sidebarName.textContent = `${accountInfo.firstName} ${accountInfo.lastName}`.trim()
+    if (sidebarName) sidebarName.textContent = displayName || 'Përdorues'
+    if (sidebarRole) sidebarRole.textContent = accountInfo.role || '...'
   }
 
+  const selIfImportCat = (v: 'barna' | 'all' | 'front'): string =>
+    ownerProductCategoryFilter === v ? 'selected' : ''
+
   container.innerHTML = `
-    <div class="min-h-[calc(100vh-2rem)] flex gap-4">
-      <aside class="hidden md:flex w-64 flex-col justify-between rounded-3xl border border-sky-100 bg-linear-to-b from-cyan-50 to-sky-100 px-4 py-5 shadow-sm">
+    <div id="owner-shell" class="premium-shell">
+      <aside id="owner-sidebar" class="premium-sidebar premium-drawer flex flex-col justify-between px-4 py-5">
         <div>
-          <div class="flex items-center gap-2 mb-6">
-            <div class="w-9 h-9 rounded-2xl bg-white flex items-center justify-center shadow">
-              <img src="/brand/flowguard/logo.png" alt="FlowGuard logo" class="w-7 h-7 rounded-full object-cover" />
+          <div class="mb-6 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <div class="w-9 h-9 rounded-2xl bg-white flex items-center justify-center shadow">
+                <img src="/brand/flowguard/logo.png" alt="FlowGuard logo" class="w-7 h-7 rounded-full object-cover" />
+              </div>
+              <span class="text-sm font-semibold text-slate-900">FlowInventory</span>
             </div>
-            <span class="text-sm font-semibold text-slate-900">FlowInventory</span>
+            <button type="button" id="owner-nav-toggle" class="premium-nav-toggle shrink-0" aria-label="Hap menynë" aria-expanded="true">
+              ${iconMenu}
+            </button>
           </div>
           <nav class="space-y-1 text-sm">
-            <a href="#/pronari/mungesat" class="${active('mungesat')}">
-              <span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
-              Mungesat
-            </a>
-            <a href="#/porosite" class="${active('porosite')}">Porositë</a>
-            <a href="#/import" class="${active('import')}">Import</a>
+            <a href="#/pronari" class="${active('mungesat')}"><span class="premium-nav-dot"></span>Mungesat</a>
+            <a href="#/porosite" class="${active('porosite')}"><span class="premium-nav-dot"></span>Porositë</a>
+            <a href="#/import" class="${active('import')}"><span class="premium-nav-dot"></span>Import</a>
           </nav>
         </div>
-        <div class="flex items-center gap-3 rounded-2xl bg-white/90 border border-sky-100 px-3 py-2.5 shadow-sm">
-          <div id="owner-sidebar-avatar" class="w-9 h-9 rounded-full bg-sky-200 text-sky-900 flex items-center justify-center text-sm font-semibold">
-            V
-          </div>
-          <div class="text-xs">
-            <div id="owner-sidebar-name" class="text-slate-900 font-medium">Valdet Mulaj</div>
-            <div class="text-slate-500 text-[11px]">Owner</div>
+        <div class="space-y-2">
+          <button type="button" data-theme-toggle="1" class="theme-toggle-chip inline-flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold"></button>
+          <div id="owner-sidebar-account-card" class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+            <div id="owner-sidebar-avatar" class="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-sm font-semibold text-blue-700">
+              O
+            </div>
+            <div class="text-xs">
+              <div id="owner-sidebar-name" class="text-slate-900 font-medium">Përdorues</div>
+              <div id="owner-sidebar-role" class="text-slate-500 text-[11px]">...</div>
+            </div>
           </div>
         </div>
       </aside>
+      <div id="owner-sidebar-backdrop" class="premium-sidebar-backdrop hidden"></div>
+      <button
+        type="button"
+        id="owner-logo-reopen"
+        class="hidden fixed left-3 top-20 z-40 rounded-xl border border-slate-200 bg-white p-1 shadow-sm"
+        aria-label="Hap menynë"
+        title="Hap menynë"
+      >
+        <img src="/brand/flowguard/logo.png" alt="FlowInventory" class="h-6 w-6 rounded-full object-cover" />
+      </button>
 
-      <main class="flex-1 rounded-3xl border border-slate-200 bg-white px-4 py-4 md:px-6 md:py-5 shadow-sm">
-        <header class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4 mb-4">
-          <div>
-            <p class="text-xs uppercase tracking-wide text-slate-500">${section === 'mungesat' ? 'Mungesat' : section === 'porosite' ? 'Porositë' : 'Import'}</p>
-            <h1 class="text-lg md:text-xl font-semibold text-slate-900">${
-              section === 'mungesat'
-                ? 'Menaxho mungesat dhe sasitë e sugjeruara'
-                : section === 'porosite'
-                  ? 'Menaxho porositë e gjeneruara'
-                  : 'Importo dhe menaxho produktet'
-            }</h1>
-          </div>
-          <div class="flex items-center gap-2">
-            <button type="button" data-theme-toggle="1" class="theme-toggle-chip rounded-full px-2.5 py-1 text-[11px] font-semibold"></button>
-            <button type="button" id="btn-import-csv" class="${section === 'import' ? 'premium-btn-ghost' : 'hidden'} md:inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs">
-              Import Excel
-            </button>
-            <input id="import-csv-input" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="hidden" />
-            <button type="button" id="btn-generate-orders" class="${section === 'porosite' ? 'premium-btn-primary inline-flex' : 'hidden'} items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold">
-              Gjenero porositë
-            </button>
-            <div class="relative">
-              <button type="button" id="owner-account-menu-btn" class="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-50">
-                <span id="owner-menu-avatar" class="h-7 w-7 rounded-full bg-sky-200 text-sky-900 flex items-center justify-center text-xs font-semibold">V</span>
-                <span class="text-slate-500">⋯</span>
+      <main class="premium-main px-4 py-4 md:px-6 md:py-5">
+        <header class="premium-header relative z-30 mb-5 overflow-visible border-b border-slate-200 pb-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="min-w-0 flex flex-1 items-center gap-2">
+              <div class="min-w-0">
+              <p class="text-xs uppercase tracking-wide text-slate-500">${section === 'mungesat' ? 'Mungesat' : section === 'porosite' ? 'Porositë' : 'Import'}</p>
+              ${
+                section === 'mungesat'
+                  ? ''
+                  : `<h1 class="text-xl md:text-2xl font-semibold tracking-tight text-slate-900">${
+                      section === 'porosite'
+                        ? 'Porositë të ndara sipas furnitorit'
+                        : 'Menaxho importin dhe produktet'
+                    }</h1>`
+              }
+              </div>
+            </div>
+            <div class="flex w-full items-center justify-end gap-2 md:w-auto">
+              <div class="${section === 'mungesat' ? '' : 'hidden '}min-w-65 max-w-95 flex-1 md:flex-none">
+                <div class="premium-top-search">
+                  <span class="premium-top-search-icon">${iconSearch}</span>
+                  <input
+                    id="owner-top-search"
+                    type="text"
+                    placeholder="Kërko për artikuj ose furnitorë..."
+                    class="premium-top-search-input"
+                  />
+                </div>
+              </div>
+              <button type="button" id="btn-import-csv" class="hidden items-center gap-2 rounded-xl px-3 py-2 text-xs">
+                Ngarko file (Excel/CSV)
               </button>
-              <div id="owner-account-menu" class="hidden absolute right-0 mt-2 w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl z-50">
-                <button type="button" id="owner-account-logout" class="w-full text-left rounded-lg px-2.5 py-2 text-xs text-red-700 hover:bg-red-50">
-                  ⎋ Dil nga account
+              <input id="import-csv-input" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="hidden" />
+              <button type="button" id="btn-generate-orders" class="${section === 'mungesat' || section === 'porosite' ? 'premium-btn-primary inline-flex' : 'hidden'} max-w-full flex-wrap items-center justify-center gap-2 rounded-xl px-3 py-2 text-[11px] font-semibold sm:px-4 sm:text-xs">
+                Gjenero porositë sipas furnitorit
+              </button>
+              <button type="button" data-theme-toggle="1" class="theme-toggle-chip inline-flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold"></button>
+              <div id="owner-account-wrap" class="relative">
+                <button type="button" id="owner-account-menu-btn" class="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-50">
+                  <span id="owner-menu-avatar" class="flex h-7 w-7 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-700">O</span>
+                  <span class="text-slate-500">⋯</span>
                 </button>
+                <div id="owner-account-menu" class="hidden absolute right-0 top-full mt-2 w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl z-120">
+                  <button type="button" id="owner-account-logout" class="w-full text-left rounded-lg px-2.5 py-2 text-xs text-red-700 hover:bg-red-50">
+                    ⎋ Dil nga account
+                  </button>
+                </div>
               </div>
             </div>
           </div>
         </header>
 
-        <section class="grid gap-3 md:grid-cols-4 mb-4">
-          <div class="rounded-2xl border border-[#b9e7b6] bg-linear-to-br from-[#ddf7da] to-[#f1fdea] p-3 shadow-sm">
-            <p class="text-[11px] uppercase tracking-wide text-[#22624a]">Kontrolli</p>
-            <p id="owner-stat-shortages" class="mt-1 text-xl font-semibold text-slate-800">0</p>
+        <section class="${section === 'import' ? 'hidden ' : ''}relative z-0 mb-6 grid gap-3 md:grid-cols-4">
+          <div class="premium-kpi p-3">
+            <div class="ui-kpi-icon">${iconKpiShortage}</div>
+            <p class="mt-2 text-[11px] uppercase tracking-wide text-slate-500">Kontrolli</p>
+            <p id="owner-stat-shortages" class="ui-kpi-number mt-1 text-slate-900">0</p>
             <p class="text-xs text-slate-500">Mungesa aktive për sot.</p>
           </div>
-          <div class="rounded-2xl border border-[#b8dfea] bg-linear-to-br from-[#dff3fb] to-[#eff9ff] p-3 shadow-sm">
-            <p class="text-[11px] uppercase tracking-wide text-[#1e5e78]">Efikasitet</p>
-            <p id="owner-stat-orders" class="mt-1 text-xl font-semibold text-slate-800">0</p>
+          <div class="premium-kpi p-3">
+            <div class="ui-kpi-icon">${iconKpiOrders}</div>
+            <p class="mt-2 text-[11px] uppercase tracking-wide text-slate-500">Efikasitet</p>
+            <p id="owner-stat-orders" class="ui-kpi-number mt-1 text-slate-900">0</p>
             <p class="text-xs text-slate-500">Porosi të gjeneruara në këtë sesion.</p>
           </div>
-          <div class="rounded-2xl border border-[#f0bfd0] bg-linear-to-br from-[#f9dbe6] to-[#fff2f7] p-3 shadow-sm">
-            <p class="text-[11px] uppercase tracking-wide text-[#7c3454]">Gjurmim</p>
-            <p id="owner-stat-urgent" class="mt-1 text-xl font-semibold text-slate-800">0</p>
+          <div class="premium-kpi p-3">
+            <div class="ui-kpi-icon">${iconKpiAlert}</div>
+            <p class="mt-2 text-[11px] uppercase tracking-wide text-slate-500">Gjurmim</p>
+            <p id="owner-stat-urgent" class="ui-kpi-number mt-1 text-slate-900">0</p>
             <p class="text-xs text-slate-500">Raste urgjente për veprim të shpejtë.</p>
           </div>
-          <div class="rounded-2xl border border-[#cfc5fb] bg-linear-to-br from-[#e7e0ff] to-[#f4f0ff] p-3 shadow-sm">
-            <p class="text-[11px] uppercase tracking-wide text-[#4e3f8f]">Produktet</p>
-            <p id="owner-products-count-top" class="mt-1 text-xl font-semibold text-slate-800">0</p>
+          <div class="premium-kpi p-3">
+            <div class="ui-kpi-icon">${iconKpiProducts}</div>
+            <p class="mt-2 text-[11px] uppercase tracking-wide text-slate-500">Produktet</p>
+            <p id="owner-products-count-top" class="ui-kpi-number mt-1 text-slate-900">0</p>
             <p class="text-xs text-slate-500">Barna të regjistruara në sistem.</p>
           </div>
         </section>
 
-        <section class="grid gap-4">
+        <section class="relative z-0 grid gap-4">
           <div class="${section === 'mungesat' ? '' : 'hidden '}premium-card p-4 md:p-5">
             <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
               <div>
-                <h2 class="text-sm font-semibold text-slate-900">Mungesat për sot</h2>
-                <p class="text-xs text-slate-500">Renditur sipas furnitorit</p>
+                <h2 class="text-base font-semibold text-slate-900">Lista live e mungesave për sot</h2>
+                <p id="owner-sort-hint" class="text-xs text-slate-500">Renditur sipas furnitorit</p>
               </div>
               <div class="flex items-center gap-2">
-                <input id="owner-search" type="text" placeholder="Kërko barin..." class="premium-input w-40 md:w-56 rounded-lg px-3 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none" />
-                <select id="owner-sort" class="premium-input rounded-lg px-2.5 py-1.5 text-xs focus:outline-none">
-                  <option value="supplier">Renditur sipas: Furnitorit</option>
-                  <option value="name">Renditur sipas: Emrit</option>
+                <select id="owner-sort" class="premium-input rounded-lg px-2.5 py-1.5 text-xs focus:outline-none" aria-label="Renditja e listës së mungesave">
+                  <option value="supplier" ${sortBy === 'supplier' ? 'selected' : ''}>Renditur sipas: Furnitorit</option>
+                  <option value="name" ${sortBy === 'name' ? 'selected' : ''}>Renditur sipas: Emrit</option>
                 </select>
               </div>
             </div>
             <div class="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <table class="min-w-full text-xs">
-                <thead class="bg-slate-100 text-slate-700">
+                <thead class="ui-table-head bg-slate-100 text-slate-700">
                   <tr>
                     <th class="px-3 py-2 text-left font-medium">Barna</th>
-                    <th class="px-3 py-2 text-left font-medium">Sasitë për porosi</th>
+                    <th class="px-3 py-2 text-left font-medium">Sasia e sugjeruar</th>
                     <th class="px-3 py-2 text-left font-medium">Furnitori</th>
                     <th class="px-3 py-2 text-left font-medium">Shënime</th>
                     <th class="px-3 py-2 text-right font-medium">Veprime</th>
@@ -651,54 +946,94 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
               </table>
             </div>
             <p class="mt-2 text-[11px] text-slate-500 flex items-center gap-1">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-              Sistemi sugjeron sasitë; ju mund t'i ndryshoni para se të gjeneroni porositë.
+              <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+              Shikoni sasinë e sugjeruar dhe ndryshojeni vetëm kur duhet; pastaj «Gjenero porositë sipas furnitorit».
             </p>
-            <div class="mt-3 flex flex-wrap gap-2">
-              <span class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-600">
-                ${iconTrend}
-                Rrit produktivitetin e porosive
-              </span>
-              <span class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-600">
-                ${iconBox}
-                Menaxhim më i qartë i stokut
-              </span>
-            </div>
           </div>
 
-          <div class="${section === 'porosite' || section === 'import' ? '' : 'hidden '}space-y-3">
-            <div class="${section === 'porosite' ? '' : 'hidden '}premium-card p-4">
+          <div class="${section === 'mungesat' || section === 'porosite' ? '' : 'hidden '}space-y-3">
+            <div id="owner-orders-panel" class="premium-card p-4">
               <div class="flex items-center justify-between mb-2">
-                <h2 class="text-sm font-semibold text-slate-900">Porositë e fundit për dërgim</h2>
-                <button data-action="show-all" class="text-[11px] text-sky-700 hover:underline">Shiko të gjitha</button>
+                <h2 class="text-base font-semibold text-slate-900">Porositë të ndara sipas furnitorit</h2>
+                <button data-action="show-all" class="premium-btn-ghost rounded-lg px-2.5 py-1 text-[11px]">${
+                  showAllOrders ? 'Shfaq vetëm të rejat' : 'Shiko të gjitha'
+                }</button>
               </div>
               <div id="owner-orders-list" class="space-y-2">${renderOrdersPanel()}</div>
             </div>
-            <div class="${section === 'import' ? '' : 'hidden '}premium-card p-4">
-              <div class="flex items-center justify-between mb-2">
-                <h3 class="text-sm font-semibold text-slate-900">Menaxho barnat e farmacisë</h3>
-                <span class="text-[11px] text-slate-500">Totali: <span id="owner-products-count">${products.length}</span></span>
+          </div>
+
+          <div class="${section === 'import' ? '' : 'hidden '}space-y-3">
+              <div class="premium-card p-4">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                  <div>
+                    <h3 class="text-base font-semibold text-slate-900">Menaxho importin</h3>
+                    <p class="text-[11px] text-slate-500">Zgjidh mënyrën: shtim manual ose import masiv nga file.</p>
+                    <p class="mt-1 text-[11px] text-slate-600 leading-snug">
+                      Kolonat: <strong>name</strong>, <strong>supplier_name</strong> (të detyrueshme). Opsionale:
+                      producer_name, last_paid_price, last_price_date, default_order_qty, aliases, category (default <strong>barna</strong>).
+                      Furnitori = burimi i porosisë; <strong>producer_name</strong> është vetëm informacion.
+                    </p>
+                  </div>
+                  <div class="inline-flex items-center gap-2">
+                    <button type="button" id="owner-import-tab-manual" data-action="switch-import-tab" data-tab="manual" class="premium-btn-ghost rounded-lg px-3 py-1.5 text-xs font-semibold">
+                      Manual
+                    </button>
+                    <button type="button" id="owner-import-tab-file" data-action="switch-import-tab" data-tab="file" class="premium-btn-primary rounded-lg px-3 py-1.5 text-xs font-semibold">
+                      Excel / CSV
+                    </button>
+                  </div>
+                </div>
+
+                <div id="owner-import-manual-panel" class="hidden">
+                  <form id="owner-product-form" class="grid gap-2 md:grid-cols-2">
+                    <input id="owner-product-name" type="text" placeholder="Emri i barit (p.sh. Paracetamol 500mg)" class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none md:col-span-2" />
+                    <input id="owner-product-supplier" type="text" placeholder="Furnitori (p.sh. TrePharm)" class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none" />
+                    <select id="owner-product-category" class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs focus:outline-none">
+                      <option value="barna">Barna</option>
+                      <option value="front">Front</option>
+                    </select>
+                    <input id="owner-product-aliases" type="text" placeholder="Aliases (opsional), ndarë me presje" class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none md:col-span-2" />
+                    <button type="submit" class="premium-btn-primary w-full rounded-lg px-3 py-1.5 text-xs font-semibold md:col-span-2">
+                      Shto produkt
+                    </button>
+                  </form>
+                </div>
+
+                <div id="owner-import-file-panel" class="space-y-3">
+                  <button type="button" data-action="open-import-picker" class="w-full rounded-xl border border-dashed border-blue-200 bg-blue-50/70 px-4 py-4 text-left hover:bg-blue-50">
+                    <div class="text-xs font-semibold text-blue-800">Zgjidh file për import (Excel/CSV)</div>
+                    <div class="mt-1 text-[11px] text-blue-700">Mbështetet: .csv, .xlsx, .xls</div>
+                  </button>
+                  <div id="owner-import-preview" class="mb-1"></div>
+                </div>
               </div>
-              <form id="owner-product-form" class="space-y-2 mb-2">
-                <input id="owner-product-name" type="text" placeholder="Emri i barit" class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none" />
-                <div class="grid grid-cols-2 gap-2">
-                  <input id="owner-product-supplier" type="text" placeholder="Furnitori" class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none" />
-                  <select id="owner-product-category" class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs focus:outline-none">
-                    <option value="barna">Barna</option>
-                    <option value="front">Front</option>
+
+              <div class="premium-card p-4">
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <h3 class="text-base font-semibold text-slate-900">Produkte ekzistuese</h3>
+                  <span class="text-[11px] text-slate-500">Shfaqur: <span id="owner-products-count">${products.length}</span></span>
+                </div>
+                <div class="mb-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                  <label class="flex items-center gap-1.5 text-[11px] text-slate-600 whitespace-nowrap">
+                    <span class="text-slate-500">Shfaq:</span>
+                    <select id="owner-products-category-filter" class="premium-input rounded-lg px-2 py-1 text-xs focus:outline-none max-w-44" aria-label="Filtro sipas kategorisë së produktit">
+                      <option value="barna" ${selIfImportCat('barna')}>Vetëm barna</option>
+                      <option value="all" ${selIfImportCat('all')}>Barna + front</option>
+                      <option value="front" ${selIfImportCat('front')}>Vetëm front</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="mb-2 grid gap-2 md:grid-cols-[1fr_auto]">
+                  <input id="owner-products-search" type="text" placeholder="Kërko sipas emrit, furnitorit ose aliases..." class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none" />
+                  <select id="owner-products-sort" class="premium-input rounded-lg px-2.5 py-1.5 text-xs focus:outline-none">
+                    <option value="name">Rendit: Emri</option>
+                    <option value="supplier">Rendit: Furnitori</option>
+                    <option value="category">Rendit: Kategoria</option>
                   </select>
                 </div>
-                <input id="owner-product-aliases" type="text" placeholder="Aliases (opsional), ndarë me presje" class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none" />
-                <button type="submit" class="premium-btn-primary w-full rounded-lg px-3 py-1.5 text-xs font-semibold">
-                  Shto bar të ri
-                </button>
-              </form>
-              <div id="owner-import-preview" class="mb-2"></div>
-              <ul id="owner-products-list" class="max-h-40 overflow-auto pr-1"></ul>
-            </div>
-            <div class="premium-card bg-linear-to-r from-slate-50 to-sky-50 p-3 text-[11px] text-slate-600">
-              Tërheqja e porosive në WhatsApp dhe gjenerimi i reciptit do të lidhen më vonë me backend-in.
-            </div>
+                <ul id="owner-products-list" class="max-h-56 overflow-auto pr-1"></ul>
+              </div>
           </div>
         </section>
       </main>
@@ -708,6 +1043,60 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
   const accountMenuBtn = document.getElementById('owner-account-menu-btn') as HTMLButtonElement | null
   const accountMenu = document.getElementById('owner-account-menu') as HTMLDivElement | null
   const accountLogout = document.getElementById('owner-account-logout') as HTMLButtonElement | null
+  const navToggle = document.getElementById('owner-nav-toggle') as HTMLButtonElement | null
+  const navLogoReopen = document.getElementById('owner-logo-reopen') as HTMLButtonElement | null
+  const shell = document.getElementById('owner-shell') as HTMLElement | null
+  const sidebar = document.getElementById('owner-sidebar') as HTMLElement | null
+  const sidebarBackdrop = document.getElementById('owner-sidebar-backdrop') as HTMLDivElement | null
+
+  const syncNavReopenVisibility = (): void => {
+    if (!shell || !sidebar || !navLogoReopen) return
+    const isDesktop = window.matchMedia('(min-width: 768px)').matches
+    const sidebarOpen = isDesktop
+      ? !shell.classList.contains('sidebar-collapsed')
+      : sidebar.classList.contains('drawer-open')
+    navLogoReopen.classList.toggle('hidden', sidebarOpen)
+    navLogoReopen.setAttribute('aria-expanded', sidebarOpen ? 'true' : 'false')
+  }
+
+  const setSidebarOpen = (open: boolean): void => {
+    if (!sidebar || !sidebarBackdrop || !shell) return
+    const isDesktop = window.matchMedia('(min-width: 768px)').matches
+    if (isDesktop) {
+      shell.classList.toggle('sidebar-collapsed', !open)
+      sidebar.classList.remove('drawer-open')
+      sidebarBackdrop.classList.add('hidden')
+      document.body.classList.remove('overflow-hidden')
+      navToggle?.setAttribute('aria-expanded', open ? 'true' : 'false')
+      syncNavReopenVisibility()
+      return
+    }
+    sidebar.classList.toggle('drawer-open', open)
+    sidebarBackdrop.classList.toggle('hidden', !open)
+    document.body.classList.toggle('overflow-hidden', open)
+    navToggle?.setAttribute('aria-expanded', open ? 'true' : 'false')
+    syncNavReopenVisibility()
+  }
+  navToggle?.addEventListener('click', () => {
+    const isDesktop = window.matchMedia('(min-width: 768px)').matches
+    const currentlyOpen = isDesktop
+      ? !Boolean(shell?.classList.contains('sidebar-collapsed'))
+      : Boolean(sidebar?.classList.contains('drawer-open'))
+    setSidebarOpen(!currentlyOpen)
+  })
+  navLogoReopen?.addEventListener('click', () => setSidebarOpen(true))
+  sidebarBackdrop?.addEventListener('click', () => setSidebarOpen(false))
+  window.addEventListener('resize', () => {
+    const isDesktop = window.matchMedia('(min-width: 768px)').matches
+    if (isDesktop) {
+      sidebar?.classList.remove('drawer-open')
+      sidebarBackdrop?.classList.add('hidden')
+      document.body.classList.remove('overflow-hidden')
+    }
+    syncNavReopenVisibility()
+  })
+  syncNavReopenVisibility()
+
   accountMenuBtn?.addEventListener('click', (e) => {
     e.stopPropagation()
     accountMenu?.classList.toggle('hidden')
@@ -722,22 +1111,55 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
   })
 
   const searchInput = document.getElementById('owner-search') as HTMLInputElement | null
+  const topSearchInput = document.getElementById('owner-top-search') as HTMLInputElement | null
   const sortSelect = document.getElementById('owner-sort') as HTMLSelectElement | null
   const productForm = document.getElementById('owner-product-form') as HTMLFormElement | null
   const productNameInput = document.getElementById('owner-product-name') as HTMLInputElement | null
   const productSupplierInput = document.getElementById('owner-product-supplier') as HTMLInputElement | null
   const productCategoryInput = document.getElementById('owner-product-category') as HTMLSelectElement | null
   const productAliasesInput = document.getElementById('owner-product-aliases') as HTMLInputElement | null
-  const importBtn = document.getElementById('btn-import-csv') as HTMLButtonElement | null
   const importInput = document.getElementById('import-csv-input') as HTMLInputElement | null
+  const productSearchInput = document.getElementById('owner-products-search') as HTMLInputElement | null
+  const productSortSelect = document.getElementById('owner-products-sort') as HTMLSelectElement | null
 
-  searchInput?.addEventListener('input', () => {
-    searchQuery = searchInput.value
+  const applySearch = (value: string): void => {
+    searchQuery = value
+    if (searchInput && searchInput.value !== value) searchInput.value = value
+    if (topSearchInput && topSearchInput.value !== value) topSearchInput.value = value
     refreshUI()
-  })
+  }
 
-  sortSelect?.addEventListener('change', () => {
-    sortBy = sortSelect.value === 'name' ? 'name' : 'supplier'
+  searchInput?.addEventListener('input', () => applySearch(searchInput.value))
+  topSearchInput?.addEventListener('input', () => applySearch(topSearchInput.value))
+
+  const applyShortageSortFromSelect = (el: HTMLSelectElement): void => {
+    sortBy = el.value === 'name' ? 'name' : 'supplier'
+    persistShortageSort(sortBy)
+    refreshUI()
+  }
+
+  shell?.addEventListener('change', (e) => {
+    const t = e.target
+    if (!(t instanceof HTMLSelectElement)) return
+    if (t.id === 'owner-sort') {
+      applyShortageSortFromSelect(t)
+      return
+    }
+    if (t.id === 'owner-products-sort') {
+      productSortBy = t.value === 'supplier' || t.value === 'category' ? t.value : 'name'
+      refreshUI()
+      return
+    }
+    if (t.id === 'owner-products-category-filter') {
+      ownerProductCategoryFilter =
+        t.value === 'front' ? 'front' : t.value === 'all' ? 'all' : 'barna'
+      refreshUI()
+    }
+  })
+  if (sortSelect) sortSelect.value = sortBy === 'name' ? 'name' : 'supplier'
+  if (productSortSelect) productSortSelect.value = productSortBy
+  productSearchInput?.addEventListener('input', () => {
+    productQuery = productSearchInput.value
     refreshUI()
   })
 
@@ -763,10 +1185,11 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     showToast('Bari u shtua. Do të dalë edhe te punëtori.')
   })
 
-  importBtn?.addEventListener('click', () => importInput?.click())
   importInput?.addEventListener('change', async () => {
     const file = importInput.files?.[0]
     if (!file) return
+    lastImportFileName = file.name
+    importTab = 'file'
     let rows: ImportRow[] = []
     const issues: string[] = []
 
@@ -794,13 +1217,28 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
               return null
             }
             const categoryRaw = pickByKeys(r, ['category', 'kategoria', 'tipi']).toLocaleLowerCase('sq-AL')
+            const priceRaw = pickByKeys(r, ['lastpaidprice', 'last_paid_price', 'cmimifundit', 'cmimiifundit'])
+            const dateRaw = pickByKeys(r, ['lastpricedate', 'last_price_date', 'datacmimit'])
+            const defQtyRaw = pickByKeys(r, ['defaultorderqty', 'default_order_qty', 'defaultsasi'])
+            const lastPaidPrice = parsePositiveNumber(priceRaw)
+            const lastPriceDate = parseDateIso(dateRaw)
+            const defaultOrderQty = parsePositiveInteger(defQtyRaw)
+            if (priceRaw && lastPaidPrice === undefined) {
+              issues.push(`Excel rreshti ${i + 2}: last_paid_price e pavlefshme (“${priceRaw}”)`)
+            }
+            if (dateRaw && lastPriceDate === undefined) {
+              issues.push(`Excel rreshti ${i + 2}: last_price_date e pavlefshme (“${dateRaw}”)`)
+            }
+            if (defQtyRaw && defaultOrderQty === undefined) {
+              issues.push(`Excel rreshti ${i + 2}: default_order_qty e pavlefshme (“${defQtyRaw}”)`)
+            }
             return {
               name,
               supplier,
               producerName: pickByKeys(r, ['producername', 'producer_name', 'prodhuesi', 'prodhues']),
-              lastPaidPrice: parsePositiveNumber(pickByKeys(r, ['lastpaidprice', 'last_paid_price', 'cmimifundit', 'cmimiifundit'])),
-              lastPriceDate: parseDateIso(pickByKeys(r, ['lastpricedate', 'last_price_date', 'datacmimit'])),
-              defaultOrderQty: parsePositiveInteger(pickByKeys(r, ['defaultorderqty', 'default_order_qty', 'defaultsasi'])),
+              lastPaidPrice,
+              lastPriceDate,
+              defaultOrderQty,
               category: parseCategory(categoryRaw),
               aliases: pickByKeys(r, ['aliases', 'alias', 'sinonime'])
                 .split(/[|,]/)
@@ -820,11 +1258,11 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
         showToast('CSV pa rreshta të vlefshëm.')
         return
       }
-      const headers = lines[0].split(',').map((h) => normalizeHeader(h))
+      const headers = splitCsvLine(lines[0]).map((h) => normalizeHeader(h))
       rows = lines
         .slice(1)
         .map((row, i): ImportRow | null => {
-          const cols = row.split(',').map((c) => c.trim())
+          const cols = splitCsvLine(row)
           const rowObj: Record<string, unknown> = {}
           headers.forEach((h, idx) => {
             rowObj[h] = cols[idx] ?? ''
@@ -836,13 +1274,28 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             return null
           }
           const categoryRaw = pickByKeys(rowObj, ['category', 'kategoria', 'tipi'])
+          const priceRaw = pickByKeys(rowObj, ['lastpaidprice', 'last_paid_price', 'cmimifundit', 'cmimiifundit'])
+          const dateRaw = pickByKeys(rowObj, ['lastpricedate', 'last_price_date', 'datacmimit'])
+          const defQtyRaw = pickByKeys(rowObj, ['defaultorderqty', 'default_order_qty', 'defaultsasi'])
+          const lastPaidPrice = parsePositiveNumber(priceRaw)
+          const lastPriceDate = parseDateIso(dateRaw)
+          const defaultOrderQty = parsePositiveInteger(defQtyRaw)
+          if (priceRaw && lastPaidPrice === undefined) {
+            issues.push(`CSV rreshti ${i + 2}: last_paid_price e pavlefshme (“${priceRaw}”)`)
+          }
+          if (dateRaw && lastPriceDate === undefined) {
+            issues.push(`CSV rreshti ${i + 2}: last_price_date e pavlefshme (“${dateRaw}”)`)
+          }
+          if (defQtyRaw && defaultOrderQty === undefined) {
+            issues.push(`CSV rreshti ${i + 2}: default_order_qty e pavlefshme (“${defQtyRaw}”)`)
+          }
           return {
             name,
             supplier,
             producerName: pickByKeys(rowObj, ['producername', 'producer_name', 'prodhuesi', 'prodhues']),
-            lastPaidPrice: parsePositiveNumber(pickByKeys(rowObj, ['lastpaidprice', 'last_paid_price', 'cmimifundit', 'cmimiifundit'])),
-            lastPriceDate: parseDateIso(pickByKeys(rowObj, ['lastpricedate', 'last_price_date', 'datacmimit'])),
-            defaultOrderQty: parsePositiveInteger(pickByKeys(rowObj, ['defaultorderqty', 'default_order_qty', 'defaultsasi'])),
+            lastPaidPrice,
+            lastPriceDate,
+            defaultOrderQty,
             category: parseCategory(categoryRaw),
             aliases: pickByKeys(rowObj, ['aliases', 'alias', 'sinonime'])
               .split(/[|,]/)
@@ -864,7 +1317,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     showToast(`Preview gati: ${rows.length} valid, ${issues.length} me gabime.`)
   })
 
-  container.addEventListener('click', async (event) => {
+  const handleContainerClick = async (event: MouseEvent): Promise<void> => {
     const target = event.target as HTMLElement
     const btn = target.closest<HTMLButtonElement>('button[data-action]')
     if (!btn) return
@@ -872,54 +1325,78 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     const action = btn.dataset.action
     const id = btn.dataset.id
 
+    if (action === 'switch-import-tab') {
+      const tab = btn.dataset.tab === 'manual' ? 'manual' : 'file'
+      importTab = tab
+      refreshUI()
+      return
+    }
+
+    if (action === 'open-import-picker') {
+      importInput?.click()
+      return
+    }
+
     if (action === 'increment' && id) {
-      shortages = await updateSuggestedQty(id, 1)
+      shortages = shortages.map((s) =>
+        s.id === id ? { ...s, suggestedQty: Math.max(1, s.suggestedQty + 1) } : s
+      )
+      persistSuggestedQtyDraft(shortages)
       refreshUI()
       return
     }
 
     if (action === 'decrement' && id) {
-      shortages = await updateSuggestedQty(id, -1)
+      shortages = shortages.map((s) =>
+        s.id === id ? { ...s, suggestedQty: Math.max(1, s.suggestedQty - 1) } : s
+      )
+      persistSuggestedQtyDraft(shortages)
       refreshUI()
       return
     }
 
     if (action === 'copy') {
-      const orderId = Number(btn.dataset.orderId)
-      const order = generatedOrders.find((o) => o.id === orderId)
+      const order = resolveOrderFromBtn(btn)
       if (!order) return
+      const orderId = order.id
       const text = buildReceipt(order)
       try {
         await navigator.clipboard.writeText(text)
-        showToast('Recipti u kopjua!')
+        showToast('U kopjua!')
       } catch {
+        setOrderStatus(orderId, 'FAILED', order.dbId)
+        refreshUI()
         showToast('Kopjimi dështoi.')
       }
       return
     }
 
     if (action === 'download-pdf') {
-      const orderId = Number(btn.dataset.orderId)
-      const order = generatedOrders.find((o) => o.id === orderId)
+      const order = resolveOrderFromBtn(btn)
       if (!order) return
+      const orderId = order.id
       try {
         await downloadOrderPdf(order)
         showToast('PDF u shkarkua.')
       } catch {
+        setOrderStatus(orderId, 'FAILED', order.dbId)
+        refreshUI()
         showToast('Shkarkimi i PDF dështoi.')
       }
       return
     }
 
     if (action === 'whatsapp') {
-      const orderId = Number(btn.dataset.orderId)
-      const order = generatedOrders.find((o) => o.id === orderId)
+      const order = resolveOrderFromBtn(btn)
       if (!order) return
+      const orderId = order.id
       const phones = getSupplierPhones()
       const typedPhone = await openWhatsAppPhoneModal(order.supplier, phones[order.supplier] ?? '')
       if (typedPhone == null) return
       const phone = normalizePhone(typedPhone)
       if (phone.length < 8) {
+        setOrderStatus(orderId, 'FAILED', order.dbId)
+        refreshUI()
         showToast('Numri i WhatsApp nuk është valid.')
         return
       }
@@ -928,20 +1405,26 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       const text = buildReceipt(order)
       const url = `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
       window.open(url, '_blank', 'noopener,noreferrer')
-      showToast('WhatsApp u hap me porosinë.')
+      showToast('WhatsApp u hap me reciptin — dërgojeni furnitorit.')
       return
     }
 
     if (action === 'mark-sent') {
-      const orderId = Number(btn.dataset.orderId)
-      const index = generatedOrders.findIndex((o) => o.id === orderId)
-      if (index === -1) return
+      const order = resolveOrderFromBtn(btn)
+      if (!order) return
+      const orderId = order.id
+      if (order.status === 'SENT') {
+        showToast('Porosia është tashmë E dërguar.')
+        return
+      }
       try {
-        generatedOrders[index] = await markOrderAsSent(generatedOrders[index])
+        const updated = await markOrderAsSent(order)
+        setOrderStatus(orderId, updated.status, order.dbId)
         refreshUI()
-        showToast('Porosia u shënua si dërguar.')
-      } catch {
-        showToast('Dështoi shënimi si dërguar.')
+        showToast('Porosia u shënua si E dërguar (status SENT).')
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Dështoi shënimi si dërguar.'
+        showToast(msg.length > 120 ? `${msg.slice(0, 117)}…` : msg)
       }
       return
     }
@@ -952,14 +1435,14 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       const edited = await openShortageEditModal(current)
       if (!edited) return
       try {
-        // suggestedQty mbahet në klient para gjenerimit të porosive.
         shortages = shortages.map((s) =>
           s.id === id ? { ...s, suggestedQty: Math.max(1, edited.suggestedQty) } : s
         )
-        shortages = await updateShortageMeta(id, { note: edited.note, urgent: edited.urgent })
+        shortages = applySuggestedQtyDraft(await updateShortageMeta(id, { note: edited.note, urgent: edited.urgent }))
         shortages = shortages.map((s) =>
           s.id === id ? { ...s, suggestedQty: Math.max(1, edited.suggestedQty) } : s
         )
+        persistSuggestedQtyDraft(shortages)
         refreshUI()
         showToast('Mungesa u përditësua.')
       } catch {
@@ -976,6 +1459,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       if (!yes) return
       try {
         shortages = await deleteShortage(id)
+        persistSuggestedQtyDraft(shortages)
         refreshUI()
         showToast('Mungesa u fshi.')
       } catch {
@@ -985,7 +1469,16 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     }
 
     if (action === 'show-all') {
-      showToast(`Gjithsej ${generatedOrders.length} porosi në listë.`)
+      showAllOrders = !showAllOrders
+      if (showAllOrders) {
+        allOrders = await getRecentOrders(100)
+      }
+      refreshUI()
+      showToast(
+        showAllOrders
+          ? `Po shfaqen të gjitha porositë (${allOrders.length}).`
+          : `Po shfaqen vetëm porositë e gjeneruara tani (${generatedOrders.length}).`
+      )
       return
     }
 
@@ -1013,6 +1506,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       products = await getProducts()
       pendingImportRows = []
       pendingImportIssues = []
+      lastImportFileName = ''
       if (importInput) importInput.value = ''
       refreshUI()
       showToast(`Import u aplikua: ${okCount} OK, ${failCount} dështuan.`)
@@ -1030,20 +1524,29 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       }
       return
     }
-  })
+  }
+  container.onclick = (event) => {
+    void handleContainerClick(event as MouseEvent)
+  }
 
   const generateBtn = document.getElementById('btn-generate-orders') as HTMLButtonElement | null
   generateBtn?.addEventListener('click', async () => {
     generatedOrders = await generateOrdersFromShortages(getFilteredRows())
+    allOrders = await getRecentOrders(100)
+    showAllOrders = false
+    clearSuggestedQtyDraft()
     refreshUI()
     showToast('Porositë u gjeneruan sipas furnitorit.')
+    document.getElementById('owner-orders-panel')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   })
 
   Promise.all([getTodayShortages(), getProducts(), loadAccountInfo(), getRecentOrders()]).then(
     ([rows, productRows, _account, recentOrders]) => {
-      shortages = rows
+      shortages = applySuggestedQtyDraft(rows)
       products = productRows
-      generatedOrders = recentOrders
+      allOrders = recentOrders
+      generatedOrders = []
+      showAllOrders = false
       refreshUI()
     }
   )

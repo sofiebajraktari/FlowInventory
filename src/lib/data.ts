@@ -17,7 +17,7 @@ export interface OwnerOrder {
   dbId?: string
   supplier: string
   items: string[]
-  status?: 'DRAFT' | 'SENT'
+  status?: 'DRAFT' | 'SENT' | 'FAILED'
 }
 
 export interface ProductView {
@@ -160,15 +160,36 @@ export async function addProduct(input: {
     supplierId = insertSupplier.data.id
   }
 
-  const insertProduct = await supabase.from('products').insert({
-    name,
-    supplier_id: supplierId,
+  const { data: sameSupplierProducts, error: listErr } = await supabase
+    .from('products')
+    .select('id,name')
+    .eq('supplier_id', supplierId)
+  if (listErr) return { ok: false, message: listErr.message }
+  const nameNorm = name.trim().toLocaleLowerCase('sq-AL')
+  const existingId =
+    sameSupplierProducts?.find((r: { id: string; name: string }) => r.name.trim().toLocaleLowerCase('sq-AL') === nameNorm)
+      ?.id ?? null
+
+  const payload = {
     category: input.category,
     aliases: input.aliases,
     producer_name: producerName || null,
     last_paid_price: lastPaidPrice,
     last_price_date: lastPriceDate,
     default_order_qty: defaultOrderQty,
+    updated_at: new Date().toISOString(),
+  }
+
+  if (existingId) {
+    const { error } = await supabase.from('products').update(payload).eq('id', existingId)
+    if (error) return { ok: false, message: error.message }
+    return { ok: true }
+  }
+
+  const insertProduct = await supabase.from('products').insert({
+    name,
+    supplier_id: supplierId,
+    ...payload,
   })
   if (insertProduct.error) return { ok: false, message: insertProduct.error.message }
 
@@ -191,28 +212,24 @@ export async function addMungese(productId: string, urgent: boolean, note: strin
 export async function getTodayShortages(): Promise<ShortageView[]> {
   if (!isSupabaseConfigured) return fromMockShortages(getShortagesMock())
 
-  const [productsRes, shortagesRes, lastOrderItemsRes] = await Promise.all([
+  const [productsRes, shortagesRes, lastQtyRpc] = await Promise.all([
     getProducts(),
     supabase
       .from('mungesat')
       .select('id,product_id,urgent,note,added_count')
       .eq('entry_date', todayIso())
       .order('created_at', { ascending: false }),
-    supabase
-      .from('order_items')
-      .select('product_id,final_qty,created_at')
-      .order('created_at', { ascending: false })
-      .limit(2000),
+    supabase.rpc('last_final_qty_by_product'),
   ])
 
   if (shortagesRes.error || !shortagesRes.data) return []
   const productMap = new Map(productsRes.map((p) => [p.id, p]))
   const lastFinalQtyByProduct = new Map<string, number>()
-  if (!lastOrderItemsRes.error && Array.isArray(lastOrderItemsRes.data)) {
-    for (const item of lastOrderItemsRes.data as Array<{ product_id: string; final_qty: number | null }>) {
-      if (!item?.product_id || lastFinalQtyByProduct.has(item.product_id)) continue
-      const qty = Number(item.final_qty ?? 0)
-      if (Number.isFinite(qty) && qty > 0) lastFinalQtyByProduct.set(item.product_id, qty)
+  if (!lastQtyRpc.error && Array.isArray(lastQtyRpc.data)) {
+    for (const row of lastQtyRpc.data as Array<{ product_id: string; final_qty: number | null }>) {
+      if (!row?.product_id) continue
+      const qty = Number(row.final_qty ?? 0)
+      if (Number.isFinite(qty) && qty > 0) lastFinalQtyByProduct.set(row.product_id, qty)
     }
   }
 
@@ -245,8 +262,6 @@ export async function updateSuggestedQty(id: string, delta: number): Promise<Sho
     return fromMockShortages(rows)
   }
 
-  // Në DB suggested qty ruhet vetëm te order_items, prandaj këtu e mbajmë vetëm në memory.
-  // Kthejmë gjendjen aktuale pa persist për para-gjenerim.
   const rows = await getTodayShortages()
   return rows.map((r) =>
     r.id === id ? { ...r, suggestedQty: Math.max(1, r.suggestedQty + delta) } : r
@@ -316,7 +331,7 @@ export async function generateOrdersFromShortages(rows: ShortageView[]): Promise
 
   const created: OwnerOrder[] = []
 
-  for (const [key, items] of grouped.entries()) {
+  for (const [, items] of grouped.entries()) {
     let supplierId = items[0].supplierId
     if (!supplierId) {
       const supplierName = items[0].supplierName
@@ -334,18 +349,41 @@ export async function generateOrdersFromShortages(rows: ShortageView[]): Promise
     }
     if (!supplierId) continue
 
-    const orderInsert = await supabase
+    const existingDraftsRes = await supabase
       .from('orders')
-      .insert({
-        supplier_id: supplierId,
-        status: 'DRAFT',
-        created_by: userId,
-      })
       .select('id')
-      .single()
-    if (orderInsert.error || !orderInsert.data?.id) continue
+      .eq('supplier_id', supplierId)
+      .eq('created_by', userId)
+      .eq('status', 'DRAFT')
+      .order('created_at', { ascending: false })
 
-    const orderId = orderInsert.data.id
+    let orderId: string | null = null
+    const existingDraftIds = Array.isArray(existingDraftsRes.data)
+      ? existingDraftsRes.data.map((r: any) => String(r.id)).filter(Boolean)
+      : []
+
+    if (existingDraftIds.length > 0) {
+      orderId = existingDraftIds[0]
+      const staleDraftIds = existingDraftIds.slice(1)
+      if (staleDraftIds.length > 0) {
+        await supabase.from('orders').delete().in('id', staleDraftIds)
+      }
+      await supabase.from('order_items').delete().eq('order_id', orderId)
+    } else {
+      const orderInsert = await supabase
+        .from('orders')
+        .insert({
+          supplier_id: supplierId,
+          status: 'DRAFT',
+          created_by: userId,
+        })
+        .select('id')
+        .single()
+      if (orderInsert.error || !orderInsert.data?.id) continue
+      orderId = String(orderInsert.data.id)
+    }
+    if (!orderId) continue
+
     const orderItemsPayload = items.map((r) => ({
       order_id: orderId,
       product_id: r.productId,
@@ -358,8 +396,7 @@ export async function generateOrdersFromShortages(rows: ShortageView[]): Promise
     const renderedItems = items.map(
       (r) => `${r.suggestedQty} ${r.productName}${r.urgent ? ' URGJENT' : ''}`
     )
-    const receipt = `FARMACIA VALDET
-POROSI MUNGESASH
+    const receipt = `POROSI MUNGESASH
 Data: ${new Date().toLocaleString('sq-AL')}
 Furnitori: ${items[0].supplierName}
 ID: ${orderId}
@@ -381,12 +418,16 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
   return created
 }
 
-export async function getRecentOrders(limit = 20): Promise<OwnerOrder[]> {
+export async function getRecentOrders(limit = 100): Promise<OwnerOrder[]> {
   if (!isSupabaseConfigured) return []
+
+  const since = new Date()
+  since.setDate(since.getDate() - 30)
 
   const { data, error } = await supabase
     .from('orders')
-    .select('id,status,suppliers(name),order_items(final_qty,suggested_qty,products(name))')
+    .select('id,status,created_at,suppliers(name),order_items(final_qty,suggested_qty,products(name))')
+    .gte('created_at', since.toISOString())
     .order('created_at', { ascending: false })
     .limit(limit)
 
@@ -400,25 +441,55 @@ export async function getRecentOrders(limit = 20): Promise<OwnerOrder[]> {
       return `${qty} × ${productName}`
     })
     const dbId = String(row.id)
+    const rawStatus = String(row.status ?? '').toUpperCase()
     return {
       id: stableOrderUiId(dbId, 1000 + idx),
       dbId,
       supplier: row.suppliers?.name ?? 'Pa furnitor',
       items,
-      status: row.status === 'SENT' ? 'SENT' : 'DRAFT',
+      status: rawStatus === 'SENT' ? 'SENT' : 'DRAFT',
     } satisfies OwnerOrder
   })
 }
 
 export async function markOrderAsSent(order: OwnerOrder): Promise<OwnerOrder> {
-  if (!isSupabaseConfigured || !order.dbId) {
+  if (!isSupabaseConfigured) {
     return { ...order, status: 'SENT' }
   }
-  const { error } = await supabase
+  if (!order.dbId) {
+    throw new Error('Porosia nuk ka ID nga baza — nuk mund të ruhet statusi.')
+  }
+
+  const { error: rpcError } = await supabase.rpc('mark_order_sent', {
+    p_order_id: order.dbId,
+  })
+  if (!rpcError) {
+    return { ...order, status: 'SENT' }
+  }
+
+  const code = (rpcError as { code?: string }).code
+  const msg = rpcError.message ?? ''
+  const rpcMissing =
+    code === 'PGRST202' ||
+    code === '42883' ||
+    /mark_order_sent|function .* does not exist|Could not find the function/i.test(msg)
+
+  if (!rpcMissing) {
+    throw new Error(msg || 'Shënimi si dërguar dështoi.')
+  }
+
+  const { data, error } = await supabase
     .from('orders')
     .update({ status: 'SENT', sent_at: new Date().toISOString() })
     .eq('id', order.dbId)
+    .select('id')
+    .maybeSingle()
   if (error) throw error
+  if (!data?.id) {
+    throw new Error(
+      'Asnjë rresht nuk u përditësua. Ekzekuto migrimin mark_order_sent në Supabase dhe kontrollo që profili yt është OWNER.'
+    )
+  }
   return { ...order, status: 'SENT' }
 }
 

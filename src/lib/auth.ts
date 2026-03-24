@@ -2,6 +2,9 @@ import { supabase, isSupabaseConfigured } from './supabase.js'
 import type { Profile, UserRole } from '../types.js'
 import { setMockUser } from '../types.js'
 
+const OAUTH_PENDING_ROLE_KEY = 'flowinventory_oauth_pending_role'
+const PASSWORD_RECOVERY_KEY = 'flowinventory_password_recovery_pending'
+
 function requireSupabase(): void {
   if (!isSupabaseConfigured) {
     throw new Error('Supabase nuk është konfiguruar. Shto VITE_SUPABASE_URL dhe VITE_SUPABASE_ANON_KEY.')
@@ -56,6 +59,21 @@ export async function signIn(email: string, password: string): Promise<Profile> 
   return profile
 }
 
+export async function signInWithGoogle(role: UserRole): Promise<void> {
+  requireSupabase()
+  if (role !== 'OWNER' && role !== 'WORKER') throw new Error('Zgjidh rolin para hyrjes me Google.')
+  localStorage.setItem(OAUTH_PENDING_ROLE_KEY, role)
+  const redirectTo = `${window.location.origin}/#/kycu`
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo,
+      queryParams: { prompt: 'select_account' },
+    },
+  })
+  if (error) throw error
+}
+
 export async function signUp(
   email: string,
   password: string,
@@ -80,8 +98,6 @@ export async function signUp(
   if (authError) throw authError
   const user = data.user
   if (!user) throw new Error('Regjistrimi dështoi.')
-  // Mos e blloko regjistrimin nga insert-i i profiles.
-  // Profili krijohet automatikisht pas kyçjes përmes ensureProfileAfterLogin().
   return { role, emailConfirmationRequired: !data.session }
 }
 
@@ -91,7 +107,72 @@ export async function signOut(): Promise<void> {
   window.location.hash = '#/kycu'
 }
 
+export async function requestPasswordReset(email: string): Promise<void> {
+  requireSupabase()
+  const redirectTo = `${window.location.origin}/`
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+  if (error) throw error
+}
+
+export async function completePasswordRecovery(newPassword: string): Promise<void> {
+  requireSupabase()
+  if (!newPassword || newPassword.length < 6) {
+    throw new Error('Fjalëkalimi duhet të ketë të paktën 6 karaktere.')
+  }
+  const { error } = await supabase.auth.updateUser({ password: newPassword })
+  if (error) throw error
+  clearPasswordRecoveryPending()
+}
+
+export function isPasswordRecoveryPending(): boolean {
+  try {
+    return sessionStorage.getItem(PASSWORD_RECOVERY_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function setPasswordRecoveryPending(): void {
+  try {
+    sessionStorage.setItem(PASSWORD_RECOVERY_KEY, '1')
+  } catch {
+  }
+}
+
+export function clearPasswordRecoveryPending(): void {
+  try {
+    sessionStorage.removeItem(PASSWORD_RECOVERY_KEY)
+  } catch {
+  }
+}
+
+export function syncPasswordRecoveryFromUrl(): void {
+  const href = window.location.href.toLowerCase()
+  if (href.includes('type=recovery')) setPasswordRecoveryPending()
+}
+
+export async function finalizeOAuthProfileIfNeeded(): Promise<Profile | null> {
+  requireSupabase()
+  const profile = await getProfile()
+  if (profile) return profile
+
+  const { data: userData, error: userError } = await supabase.auth.getUser()
+  if (userError || !userData.user) return null
+
+  const pendingRole = normalizeRole(localStorage.getItem(OAUTH_PENDING_ROLE_KEY))
+  if (!pendingRole) return null
+
+  const { error } = await supabase.from('profiles').upsert({ id: userData.user.id, role: pendingRole })
+  if (error) return null
+
+  localStorage.removeItem(OAUTH_PENDING_ROLE_KEY)
+  return { role: pendingRole }
+}
+
 export function hasSession(): Promise<boolean> {
   if (!isSupabaseConfigured) return Promise.resolve(false)
-  return supabase.auth.getSession().then(({ data: { session } }) => Boolean(session))
+  return supabase.auth
+    .getUser()
+    .then(({ data, error }) => Boolean(!error && data.user))
+    .catch(() => false)
 }

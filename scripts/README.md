@@ -1,20 +1,22 @@
-# Skriptat FlowInventory
+# Skriptat SQL (`scripts/`)
 
-## Si të ekzekutosh skemën
+## `schema.sql`
 
-1. Hap **Supabase Dashboard** → **SQL Editor** → **New query**.
-2. Kopjo të gjithë përmbajtjen e `schema.sql` dhe ngjite.
-3. Kliko **Run**.
+- Përmbledhje e tabelave: `profiles`, `suppliers`, `products`, `mungesat`, `orders`, `order_items`.
+- **RLS** + politika sipas rolit (punëtori: kryesisht INSERT mungesash + RPC; pronari: shkrim i plotë).
+- Funksione: `add_mungese` (dedup), `last_final_qty_by_product` (lexim i kufizuar për sugjerim sasie).
+- **Realtime:** koment për `supabase_realtime` / `mungesat`.
 
-## Pas ekzekutimit
+**Ekzekutim:** Supabase → SQL Editor → ngjit `schema.sql` → Run.
 
-- **Profiles:** Çdo user i ri merr automatikisht rolin `WORKER`. Për të pasur një pronar:
-  - Krijo një llogari nga aplikacioni (ose nga Auth në Supabase).
-  - Në **Table Editor** → **profiles** gjej atë user dhe ndrysho `role` në `OWNER`.
+## Përputhje me migrimet në `supabase/migrations/`
 
-- **Realtime:** Nëse dalin gabime për `supabase_realtime`, në Dashboard shko te **Database** → **Replication** dhe aktivizo Realtime për tabelën `mungesat`.
+Në zhvillim zakonisht përdoren migrimet (rend sipas datës në emër). Nëse ke nisur nga `schema.sql` dhe mungon RLS i fundit:
 
-## Përputhje me udhëzuesin
+1. Ekzekuto edhe përmbajtjen e `../supabase/migrations/20260324120000_rls_worker_orders_read.sql`  
+   (heq `SELECT` të hapur për `orders`/`order_items` nga punëtori + RPC).
 
-- Tabelat: `profiles`, `suppliers`, `products`, `mungesat`, `orders`, `order_items`.
-- RLS: vetëm të kyçur; punëtori vetëm INSERT te `mungesat`; pronari bën gjithçka.
+## Pas skemës
+
+- Përdoruesi i ri: shpesh `WORKER` nga trigger; ndrysho në **`profiles.role = 'OWNER'`** për pronarin.
+- Aktivizo **Realtime** për tabelën **`mungesat`**.

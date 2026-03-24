@@ -1,28 +1,23 @@
--- ============================================================
--- FlowInventory – Schema i plotë Supabase (sipas udhëzuesit)
--- Ekzekuto në Supabase → SQL Editor (ose via Supabase CLI)
--- ============================================================
 
--- 1. profiles – roli i përdoruesit (OWNER / WORKER)
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   role text not null check (role in ('OWNER', 'WORKER')),
   updated_at timestamptz default now()
 );
 
--- 2. suppliers – furnitorët (distributorët)
+
 create table if not exists public.suppliers (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
   created_at timestamptz default now()
 );
 
--- 3. products – barnat (+ opsional front)
+
 create table if not exists public.products (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   generic_name text,
-  aliases text,
+  aliases text[] default '{}'::text[],
   supplier_id uuid references public.suppliers(id) on delete set null,
   producer_name text,
   last_paid_price numeric(10,2),
@@ -33,7 +28,6 @@ create table if not exists public.products (
   updated_at timestamptz default now()
 );
 
--- 4. mungesat – mungesat e ditës (dedup + added_count)
 create table if not exists public.mungesat (
   id uuid primary key default gen_random_uuid(),
   entry_date date not null default current_date,
@@ -47,22 +41,27 @@ create table if not exists public.mungesat (
   unique(entry_date, product_id)
 );
 
--- 5. orders – porositë sipas furnitorit (DRAFT → SENT)
 create table if not exists public.orders (
   id uuid primary key default gen_random_uuid(),
   supplier_id uuid not null references public.suppliers(id) on delete cascade,
   status text not null default 'DRAFT' check (status in ('DRAFT', 'SENT')),
   receipt_text text,
+  created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz default now(),
-  updated_at timestamptz default now()
+  updated_at timestamptz default now(),
+  sent_at timestamptz
 );
+
+alter table public.orders add column if not exists sent_at timestamptz;
 
 -- 6. order_items – rreshtat e porosisë (final_qty nga pronari)
 create table if not exists public.order_items (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references public.orders(id) on delete cascade,
   product_id uuid not null references public.products(id) on delete cascade,
+  suggested_qty integer not null default 1 check (suggested_qty >= 1),
   final_qty integer not null check (final_qty > 0),
+  note text not null default '',
   created_at timestamptz default now(),
   unique(order_id, product_id)
 );
@@ -89,8 +88,6 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- ========== RLS (Row Level Security) ==========
--- Rregull: vetëm authenticated; pronari bën gjithçka; punëtori vetëm INSERT te mungesat.
 
 alter table public.profiles enable row level security;
 alter table public.suppliers enable row level security;
@@ -99,17 +96,17 @@ alter table public.mungesat enable row level security;
 alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
 
--- Helper: a është pronari?
+
 create or replace function public.is_owner()
 returns boolean as $$
   select exists (
     select 1 from public.profiles
     where id = auth.uid() and role = 'OWNER'
   );
-$$ language sql security definer stable;
-
--- profiles: vetëm authenticated lexojnë; pronari mund të ndryshojë (për role)
+$$ language sql security definer stable;-- profiles: lexim për të gjithë të kyçur; insert për veten (ose pronari); përditësim vetëm pronari
 create policy "profiles_select" on public.profiles for select to authenticated using (true);
+create policy "profiles_insert_self_or_owner" on public.profiles for insert to authenticated
+  with check (auth.uid() = id or public.is_owner());
 create policy "profiles_update_owner" on public.profiles for update to authenticated
   using (public.is_owner()) with check (public.is_owner());
 
@@ -123,19 +120,19 @@ create policy "products_select" on public.products for select to authenticated u
 create policy "products_all_owner" on public.products for all to authenticated
   using (public.is_owner()) with check (public.is_owner());
 
--- mungesat: punëtori vetëm INSERT; pronari bën gjithçka
 create policy "mungesat_select" on public.mungesat for select to authenticated using (true);
-create policy "mungesat_insert" on public.mungesat for insert to authenticated with check (true);
-create policy "mungesat_update_delete_owner" on public.mungesat for all to authenticated
+create policy "mungesat_insert" on public.mungesat for insert to authenticated
+  with check (auth.uid() is not null and created_by = auth.uid());
+create policy "mungesat_owner_update" on public.mungesat for update to authenticated
   using (public.is_owner()) with check (public.is_owner());
-
--- orders & order_items: vetëm pronari
+create policy "mungesat_owner_delete" on public.mungesat for delete to authenticated
+  using (public.is_owner());
 create policy "orders_all_owner" on public.orders for all to authenticated
   using (public.is_owner()) with check (public.is_owner());
 create policy "order_items_all_owner" on public.order_items for all to authenticated
   using (public.is_owner()) with check (public.is_owner());
 
--- RPC: shtim mungese me dedup (punëtori thërret këtë në vend të INSERT të drejtpërdrejtë)
+
 create or replace function public.add_mungese(
   p_product_id uuid,
   p_urgent boolean default false,
@@ -173,13 +170,60 @@ begin
 end;
 $$;
 
--- Lejo të kyçur të thërrasin add_mungese (RLS në tabelë mungesat mbetet)
+
 grant execute on function public.add_mungese(uuid, boolean, text) to authenticated;
 
--- Realtime: aktivizo për mungesat (sipas doc)
+
+create or replace function public.last_final_qty_by_product()
+returns table (product_id uuid, final_qty integer)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select distinct on (oi.product_id)
+    oi.product_id,
+    oi.final_qty::integer
+  from public.order_items oi
+  where oi.final_qty is not null and oi.final_qty >= 1
+  order by oi.product_id, oi.created_at desc;
+$$;
+
+grant execute on function public.last_final_qty_by_product() to authenticated;
+
+
+create or replace function public.mark_order_sent(p_order_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  n int;
+begin
+  if not public.is_owner() then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+
+  update public.orders
+  set
+    status = 'SENT',
+    sent_at = now()
+  where id = p_order_id;
+
+  get diagnostics n = row_count;
+  if n = 0 then
+    raise exception 'order_not_found' using errcode = 'P0002';
+  end if;
+end;
+$$;
+
+revoke all on function public.mark_order_sent(uuid) from public;
+grant execute on function public.mark_order_sent(uuid) to authenticated;
+
+
 alter publication supabase_realtime add table public.mungesat;
 
--- Komente
 comment on table public.profiles is 'Roli i përdoruesit: OWNER ose WORKER';
 comment on table public.suppliers is 'Furnitorët (distributorët)';
 comment on table public.products is 'Barnat + opsional front';

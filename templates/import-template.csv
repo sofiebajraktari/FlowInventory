@@ -1,0 +1,5 @@
+name,supplier_name,producer_name,last_paid_price,last_price_date,default_order_qty,aliases,category
+AUGMENTIN 1g TAB 14,DONIKA,GSK,8.90,2026-03-01,2,"augmentin,amoksiklav",barna
+BRUFEN 400mg TAB 20,ABCOM,Abbott,3.20,2026-02-14,2,"brufen,ibuprofen",barna
+PARACETAMOL 500mg TAB 10,ABCOM,,1.50,2026-01-27,3,"paracetamol,dafalgan",barna
+VITAMIN C 500mg,VITA,,4.10,2026-02-03,1,"vit c,ascorbic",front
