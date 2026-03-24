@@ -654,7 +654,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     if (status === 'FAILED') {
       return `<span class="owner-order-status owner-order-status-failed inline-flex items-center rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">Dështoi</span>`
     }
-    return `<span class="owner-order-status owner-order-status-pending inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Skicë</span>`
+    return `<span class="owner-order-status owner-order-status-pending inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">E padërguar</span>`
   }
 
   function renderOrdersPanel(): string {

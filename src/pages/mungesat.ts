@@ -152,8 +152,7 @@ export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat
             <div class="flex min-w-0 items-center gap-3">
               <div class="min-w-0">
                 <p class="text-xs uppercase tracking-wide text-slate-500">Mungesat</p>
-                <h1 class="text-xl md:text-2xl font-semibold tracking-tight text-slate-900">Shto mungesa shpejt (pa sasi)</h1>
-                <p class="mt-1 text-xs text-slate-500">Lista nuk prishet: një rresht për bar, sistemi rrit numrin e shtimeve.</p>
+                <h1 class="text-xl md:text-2xl font-semibold tracking-tight text-slate-900">Shto mungesa shpejt</h1>
               </div>
             </div>
             <div class="flex items-center gap-2">
