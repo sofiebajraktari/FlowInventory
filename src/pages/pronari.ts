@@ -1094,11 +1094,6 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                   <div>
                     <h3 class="text-base font-semibold text-slate-900">Menaxho importin</h3>
                     <p class="text-[11px] text-slate-500">Zgjidh mënyrën: shtim manual ose import masiv nga file.</p>
-                    <p class="mt-1 text-[11px] text-slate-600 leading-snug">
-                      Kolonat: <strong>name</strong>, <strong>supplier_name</strong> (të detyrueshme). Opsionale:
-                      producer_name, last_paid_price, last_price_date, default_order_qty, emra_alternative, category (default <strong>barna</strong>).
-                      Furnitori = burimi i porosisë; <strong>producer_name</strong> është vetëm informacion.
-                    </p>
                   </div>
                   <div class="inline-flex items-center gap-2">
                     <button type="button" id="owner-import-tab-manual" data-action="switch-import-tab" data-tab="manual" class="premium-btn-ghost rounded-lg px-3 py-1.5 text-xs font-semibold">
