@@ -4168,6 +4168,30 @@ body.theme-dark .worker-missing-count {
     padding: 0.75rem;
   }
 
+  .owner-header-controls {
+    align-items: stretch;
+  }
+
+  .owner-header-search-wrap .premium-top-search {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .owner-generate-btn {
+    width: 100%;
+    min-height: 2.5rem;
+    font-size: 0.74rem;
+    line-height: 1.25;
+  }
+
+  .owner-header-actions {
+    justify-content: flex-end;
+  }
+
+  #owner-account-menu-btn {
+    min-height: 2.25rem;
+  }
+
   #owner-toast,
   #worker-toast {
     left: 0.75rem;

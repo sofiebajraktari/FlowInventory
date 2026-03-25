@@ -854,8 +854,8 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
               }
               </div>
             </div>
-            <div class="flex w-full items-center justify-end gap-2 md:w-auto">
-              <div class="${section === 'mungesat' ? '' : 'hidden '}min-w-65 max-w-95 flex-1 md:flex-none">
+            <div class="owner-header-controls flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center md:justify-end">
+              <div class="${section === 'mungesat' ? '' : 'hidden '}owner-header-search-wrap w-full md:w-auto md:min-w-[16rem] md:max-w-[24rem]">
                 <div class="premium-top-search">
                   <span class="premium-top-search-icon">${iconSearch}</span>
                   <input
@@ -870,19 +870,21 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                 Ngarko file (Excel/CSV)
               </button>
               <input id="import-csv-input" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="hidden" />
-              <button type="button" id="btn-generate-orders" class="${section === 'mungesat' || section === 'porosite' ? 'premium-btn-primary inline-flex' : 'hidden'} max-w-full flex-wrap items-center justify-center gap-2 rounded-xl px-3 py-2 text-[11px] font-semibold sm:px-4 sm:text-xs">
+              <button type="button" id="btn-generate-orders" class="${section === 'mungesat' || section === 'porosite' ? 'premium-btn-primary inline-flex' : 'hidden'} owner-generate-btn max-w-full flex-wrap items-center justify-center gap-2 rounded-xl px-3 py-2 text-[11px] font-semibold sm:px-4 sm:text-xs">
                 Gjenero porositë sipas furnitorit
               </button>
-              <button type="button" data-theme-toggle="1" class="theme-toggle-chip inline-flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold"></button>
-              <div id="owner-account-wrap" class="relative">
-                <button type="button" id="owner-account-menu-btn" class="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-50">
-                  <span id="owner-menu-avatar" class="flex h-7 w-7 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-700">O</span>
-                  <span class="text-slate-500">⋯</span>
-                </button>
-                <div id="owner-account-menu" class="hidden absolute right-0 top-full mt-2 w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl z-120">
-                  <button type="button" id="owner-account-logout" class="w-full text-left rounded-lg px-2.5 py-2 text-xs text-red-700 hover:bg-red-50">
-                    ⎋ Dil nga account
+              <div class="owner-header-actions flex items-center justify-end gap-2">
+                <button type="button" data-theme-toggle="1" class="theme-toggle-chip inline-flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold"></button>
+                <div id="owner-account-wrap" class="relative">
+                  <button type="button" id="owner-account-menu-btn" class="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-50">
+                    <span id="owner-menu-avatar" class="flex h-7 w-7 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-700">O</span>
+                    <span class="text-slate-500">⋯</span>
                   </button>
+                  <div id="owner-account-menu" class="hidden absolute right-0 top-full mt-2 w-48 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl z-120">
+                    <button type="button" id="owner-account-logout" class="w-full text-left rounded-lg px-2.5 py-2 text-xs text-red-700 hover:bg-red-50">
+                      ⎋ Dil nga account
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
