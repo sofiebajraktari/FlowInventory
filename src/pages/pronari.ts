@@ -5,12 +5,13 @@ import { getMockUser } from '../types.js'
 import { jsPDF } from 'jspdf'
 import {
   addProduct,
+  deleteProduct,
   deleteShortage,
   generateOrdersFromShortages,
-  getRecentOrders,
   getProducts,
   getTodayShortages,
   markOrderAsSent,
+  updateProduct,
   updateShortageMeta,
   type ProductView,
   type ShortageView,
@@ -73,8 +74,6 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
   let searchQuery = ''
   let sortBy: 'supplier' | 'name' = readStoredShortageSort()
   let generatedOrders: OwnerOrder[] = []
-  let allOrders: OwnerOrder[] = []
-  let showAllOrders = false
   let pendingImportRows: ImportRow[] = []
   let pendingImportIssues: string[] = []
   let importTab: 'manual' | 'file' = 'file'
@@ -286,7 +285,7 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
                 <th class="px-2 py-1 text-left">Cmimi fundit</th>
                 <th class="px-2 py-1 text-left">Data cmimit</th>
                 <th class="px-2 py-1 text-left">Default qty</th>
-                <th class="px-2 py-1 text-left">Aliases</th>
+                <th class="px-2 py-1 text-left">Emra alternativë</th>
                 <th class="px-2 py-1 text-left">Category</th>
               </tr>
             </thead>
@@ -357,6 +356,13 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
       }
       return compareAlbanian(nameA, nameB) || compareAlbanian(supplierA, supplierB)
     })
+  }
+
+  function parseAliasesInput(raw: string): string[] {
+    return raw
+      .split(',')
+      .map((x) => x.trim())
+      .filter(Boolean)
   }
 
   function getSupplierPhones(): Record<string, string> {
@@ -472,6 +478,94 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
           urgent: Boolean(urgentInput?.checked),
           note: noteInput?.value ?? '',
         })
+      })
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) close(null)
+      })
+    })
+  }
+
+  function openProductEditModal(initial: ProductView): Promise<{
+    name: string
+    supplier: string
+    category: 'barna' | 'front'
+    aliases: string[]
+  } | null> {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div')
+      overlay.className = 'fixed inset-0 z-[70] bg-slate-900/18 flex items-center justify-center p-4'
+      overlay.innerHTML = `
+        <div class="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+          <h3 class="text-lg font-semibold text-slate-900 mb-1">Përditëso produktin</h3>
+          <p class="text-sm text-slate-500 mb-4">Ndrysho të dhënat bazë të produktit.</p>
+          <div class="grid gap-3 md:grid-cols-2">
+            <label class="text-sm text-slate-700">
+              Emri i produktit
+              <input id="owner-edit-product-name" type="text" class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </label>
+            <label class="text-sm text-slate-700">
+              Furnitori
+              <input id="owner-edit-product-supplier" type="text" class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </label>
+            <label class="text-sm text-slate-700">
+              Kategoria
+              <select id="owner-edit-product-category" class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="barna">Barna</option>
+                <option value="front">Front</option>
+              </select>
+            </label>
+            <label class="text-sm text-slate-700 md:col-span-2">
+              Emra alternativë (ndarë me presje)
+              <input id="owner-edit-product-aliases" type="text" class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </label>
+          </div>
+          <p id="owner-edit-product-error" class="mt-2 text-xs text-red-600"></p>
+          <div class="mt-4 flex items-center justify-end gap-2">
+            <button type="button" id="owner-edit-product-cancel" class="premium-btn-ghost rounded-xl px-4 py-2 text-sm font-medium">Anulo</button>
+            <button type="button" id="owner-edit-product-save" class="premium-btn-primary rounded-xl px-4 py-2 text-sm font-semibold">Ruaj ndryshimet</button>
+          </div>
+        </div>
+      `
+      document.body.appendChild(overlay)
+
+      const nameInput = overlay.querySelector<HTMLInputElement>('#owner-edit-product-name')
+      const supplierInput = overlay.querySelector<HTMLInputElement>('#owner-edit-product-supplier')
+      const categoryInput = overlay.querySelector<HTMLSelectElement>('#owner-edit-product-category')
+      const aliasesInput = overlay.querySelector<HTMLInputElement>('#owner-edit-product-aliases')
+      const errorEl = overlay.querySelector<HTMLParagraphElement>('#owner-edit-product-error')
+      const cancelBtn = overlay.querySelector<HTMLButtonElement>('#owner-edit-product-cancel')
+      const saveBtn = overlay.querySelector<HTMLButtonElement>('#owner-edit-product-save')
+
+      if (nameInput) nameInput.value = initial.name
+      if (supplierInput) supplierInput.value = initial.supplierName
+      if (categoryInput) categoryInput.value = initial.category
+      if (aliasesInput) aliasesInput.value = initial.aliases.join(', ')
+      nameInput?.focus()
+
+      const close = (
+        value: { name: string; supplier: string; category: 'barna' | 'front'; aliases: string[] } | null
+      ) => {
+        overlay.remove()
+        resolve(value)
+      }
+
+      cancelBtn?.addEventListener('click', () => close(null))
+      saveBtn?.addEventListener('click', () => {
+        const name = (nameInput?.value ?? '').trim()
+        const supplier = (supplierInput?.value ?? '').trim()
+        if (!name) {
+          if (errorEl) errorEl.textContent = 'Emri është i detyrueshëm.'
+          nameInput?.focus()
+          return
+        }
+        if (!supplier) {
+          if (errorEl) errorEl.textContent = 'Furnitori është i detyrueshëm.'
+          supplierInput?.focus()
+          return
+        }
+        const category = categoryInput?.value === 'front' ? 'front' : 'barna'
+        const aliases = parseAliasesInput(aliasesInput?.value ?? '')
+        close({ name, supplier, category, aliases })
       })
       overlay.addEventListener('click', (e) => {
         if (e.target === overlay) close(null)
@@ -627,20 +721,16 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       return copy
     }
     generatedOrders = update(generatedOrders)
-    allOrders = update(allOrders)
   }
 
   function getOrderById(orderId: number): OwnerOrder | undefined {
-    return generatedOrders.find((o) => o.id === orderId) ?? allOrders.find((o) => o.id === orderId)
+    return generatedOrders.find((o) => o.id === orderId)
   }
 
   function resolveOrderFromBtn(btn: HTMLButtonElement): OwnerOrder | undefined {
     const dbId = btn.dataset.orderDbId?.trim()
     if (dbId) {
-      return (
-        generatedOrders.find((o) => o.dbId === dbId) ??
-        allOrders.find((o) => o.dbId === dbId)
-      )
+      return generatedOrders.find((o) => o.dbId === dbId)
     }
     const orderId = Number(btn.dataset.orderId)
     if (!Number.isFinite(orderId)) return undefined
@@ -658,15 +748,11 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
   }
 
   function renderOrdersPanel(): string {
-    const ordersToRender = showAllOrders ? allOrders : generatedOrders
+    const ordersToRender = generatedOrders
     if (!ordersToRender.length) {
       return `<div class="premium-empty">
-        <div class="premium-empty-title">${showAllOrders ? 'Nuk ka porosi në histori' : 'Nuk ka porosi të gjeneruara tani'}</div>
-        <p class="premium-empty-copy">${
-          showAllOrders
-            ? 'Ende nuk ka porosi të ruajtura.'
-            : 'Kliko «Gjenero porositë sipas furnitorit» për të krijuar porositë.'
-        }</p>
+        <div class="premium-empty-title">Nuk ka porosi të ditës së sotme</div>
+        <p class="premium-empty-copy">Kliko «Gjenero porositë e ditës së sotme» për t'i krijuar porositë.</p>
       </div>`
     }
     return `
@@ -738,9 +824,19 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
         .slice(0, 40)
         .map(
           (p) =>
-            `<li class="flex items-center justify-between gap-2 border-b border-slate-200 py-2 text-xs">
-              <span class="font-medium text-slate-700">${p.name}</span>
-              <span class="text-slate-500">${p.supplierName} • ${p.category === 'front' ? 'Front' : 'Barna'}</span>
+            `<li class="flex items-start justify-between gap-2 border-b border-slate-200 py-2 text-xs">
+              <div class="min-w-0">
+                <p class="font-medium text-slate-700 truncate">${p.name}</p>
+                <p class="text-slate-500">
+                  ${p.supplierName} • ${p.category === 'front' ? 'Front' : 'Barna'} • ${
+                  p.aliases.length ? p.aliases.join(', ') : 'pa emra alternativë'
+                }
+                </p>
+              </div>
+              <div class="inline-flex items-center gap-1.5">
+                <button data-action="edit-product" data-product-id="${p.id}" title="Ndrysho produktin" class="ui-icon-btn">${iconEdit}</button>
+                <button data-action="delete-product" data-product-id="${p.id}" title="Fshi produktin" class="ui-icon-btn">${iconTrash}</button>
+              </div>
             </li>`
         )
         .join('')
@@ -754,7 +850,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     const statUrgent = document.getElementById('owner-stat-urgent')
     const sortHint = document.getElementById('owner-sort-hint')
     if (statShortages) statShortages.textContent = String(shortages.length)
-    if (statOrders) statOrders.textContent = String((showAllOrders ? allOrders : generatedOrders).length)
+    if (statOrders) statOrders.textContent = String(generatedOrders.length)
     if (statUrgent) statUrgent.textContent = String(shortages.filter((s) => s.urgent).length)
     if (sortHint) sortHint.textContent = sortBy === 'name' ? 'Renditur sipas emrit' : 'Renditur sipas furnitorit'
     const sortSelectEl = document.getElementById('owner-sort') as HTMLSelectElement | null
@@ -870,9 +966,6 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                 Ngarko file (Excel/CSV)
               </button>
               <input id="import-csv-input" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="hidden" />
-              <button type="button" id="btn-generate-orders" class="${section === 'mungesat' || section === 'porosite' ? 'premium-btn-primary inline-flex' : 'hidden'} owner-generate-btn max-w-full flex-wrap items-center justify-center gap-2 rounded-xl px-3 py-2 text-[11px] font-semibold sm:px-4 sm:text-xs">
-                Gjenero porositë sipas furnitorit
-              </button>
               <div class="owner-header-actions flex items-center justify-end gap-2">
                 <button type="button" data-theme-toggle="1" class="theme-toggle-chip inline-flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold"></button>
                 <div id="owner-account-wrap" class="relative">
@@ -948,7 +1041,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             </div>
             <p class="mt-2 text-[11px] text-slate-500 flex items-center gap-1">
               <span class="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-              Shikoni sasinë e sugjeruar dhe ndryshojeni vetëm kur duhet; pastaj «Gjenero porositë sipas furnitorit».
+              Shikoni sasinë e sugjeruar dhe ndryshojeni vetëm kur duhet; pastaj «Gjenero porositë e ditës së sotme».
             </p>
           </div>
 
@@ -956,11 +1049,13 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             <div id="owner-orders-panel" class="premium-card p-4">
               <div class="flex items-center justify-between mb-2">
                 <h2 class="text-base font-semibold text-slate-900">Porositë të ndara sipas furnitorit</h2>
-                <button data-action="show-all" class="premium-btn-ghost rounded-lg px-2.5 py-1 text-[11px]">${
-                  showAllOrders ? 'Shfaq vetëm të rejat' : 'Shiko të gjitha'
-                }</button>
               </div>
               <div id="owner-orders-list" class="space-y-2">${renderOrdersPanel()}</div>
+              <div class="mt-3">
+                <button type="button" id="btn-generate-orders-today" class="premium-btn-primary inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-[11px] font-semibold sm:px-4 sm:text-xs">
+                  Gjenero porositë e ditës së sotme
+                </button>
+              </div>
             </div>
           </div>
 
@@ -972,7 +1067,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                     <p class="text-[11px] text-slate-500">Zgjidh mënyrën: shtim manual ose import masiv nga file.</p>
                     <p class="mt-1 text-[11px] text-slate-600 leading-snug">
                       Kolonat: <strong>name</strong>, <strong>supplier_name</strong> (të detyrueshme). Opsionale:
-                      producer_name, last_paid_price, last_price_date, default_order_qty, aliases, category (default <strong>barna</strong>).
+                      producer_name, last_paid_price, last_price_date, default_order_qty, emra_alternative, category (default <strong>barna</strong>).
                       Furnitori = burimi i porosisë; <strong>producer_name</strong> është vetëm informacion.
                     </p>
                   </div>
@@ -994,7 +1089,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                       <option value="barna">Barna</option>
                       <option value="front">Front</option>
                     </select>
-                    <input id="owner-product-aliases" type="text" placeholder="Aliases (opsional), ndarë me presje" class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none md:col-span-2" />
+                    <input id="owner-product-aliases" type="text" placeholder="Emra alternativë (opsional), ndarë me presje" class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none md:col-span-2" />
                     <button type="submit" class="premium-btn-primary w-full rounded-lg px-3 py-1.5 text-xs font-semibold md:col-span-2">
                       Shto produkt
                     </button>
@@ -1026,7 +1121,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                   </label>
                 </div>
                 <div class="mb-2 grid gap-2 md:grid-cols-[1fr_auto]">
-                  <input id="owner-products-search" type="text" placeholder="Kërko sipas emrit, furnitorit ose aliases..." class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none" />
+                  <input id="owner-products-search" type="text" placeholder="Kërko sipas emrit, furnitorit ose emrave alternativë..." class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none" />
                   <select id="owner-products-sort" class="premium-input rounded-lg px-2.5 py-1.5 text-xs focus:outline-none">
                     <option value="name">Rendit: Emri</option>
                     <option value="supplier">Rendit: Furnitori</option>
@@ -1169,10 +1264,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     const name = productNameInput?.value ?? ''
     const supplier = productSupplierInput?.value ?? ''
     const category = (productCategoryInput?.value === 'front' ? 'front' : 'barna')
-    const aliases = (productAliasesInput?.value ?? '')
-      .split(',')
-      .map((x) => x.trim())
-      .filter(Boolean)
+    const aliases = parseAliasesInput(productAliasesInput?.value ?? '')
 
     const result = await addProduct({ name, supplier, category, aliases })
     if (!result.ok) {
@@ -1241,7 +1333,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
               lastPriceDate,
               defaultOrderQty,
               category: parseCategory(categoryRaw),
-              aliases: pickByKeys(r, ['aliases', 'alias', 'sinonime'])
+              aliases: pickByKeys(r, ['emraalternative', 'emra_alternative', 'emraalternativ', 'aliases', 'alias', 'sinonime'])
                 .split(/[|,]/)
                 .map((a) => a.trim())
                 .filter(Boolean),
@@ -1298,7 +1390,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             lastPriceDate,
             defaultOrderQty,
             category: parseCategory(categoryRaw),
-            aliases: pickByKeys(rowObj, ['aliases', 'alias', 'sinonime'])
+            aliases: pickByKeys(rowObj, ['emraalternative', 'emra_alternative', 'emraalternativ', 'aliases', 'alias', 'sinonime'])
               .split(/[|,]/)
               .map((a) => a.trim())
               .filter(Boolean),
@@ -1325,6 +1417,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
 
     const action = btn.dataset.action
     const id = btn.dataset.id
+    const productId = btn.dataset.productId
 
     if (action === 'switch-import-tab') {
       const tab = btn.dataset.tab === 'manual' ? 'manual' : 'file'
@@ -1469,17 +1562,44 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       return
     }
 
-    if (action === 'show-all') {
-      showAllOrders = !showAllOrders
-      if (showAllOrders) {
-        allOrders = await getRecentOrders(100)
+    if (action === 'edit-product' && productId) {
+      const current = products.find((p) => p.id === productId)
+      if (!current) return
+      const edited = await openProductEditModal(current)
+      if (!edited) return
+      const result = await updateProduct({
+        id: current.id,
+        name: edited.name,
+        supplier: edited.supplier,
+        category: edited.category,
+        aliases: edited.aliases,
+      })
+      if (!result.ok) {
+        showToast(result.message)
+        return
       }
+      products = await getProducts()
       refreshUI()
-      showToast(
-        showAllOrders
-          ? `Po shfaqen të gjitha porositë (${allOrders.length}).`
-          : `Po shfaqen vetëm porositë e gjeneruara tani (${generatedOrders.length}).`
+      showToast('Produkti u përditësua.')
+      return
+    }
+
+    if (action === 'delete-product' && productId) {
+      const current = products.find((p) => p.id === productId)
+      if (!current) return
+      const yes = await openConfirmModal(
+        'Fshirja e produktit',
+        `A je i sigurt që do ta fshish produktin "${current.name}"?`
       )
+      if (!yes) return
+      const result = await deleteProduct(productId)
+      if (!result.ok) {
+        showToast(result.message)
+        return
+      }
+      products = await getProducts()
+      refreshUI()
+      showToast('Produkti u fshi.')
       return
     }
 
@@ -1530,24 +1650,20 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     void handleContainerClick(event as MouseEvent)
   }
 
-  const generateBtn = document.getElementById('btn-generate-orders') as HTMLButtonElement | null
+  const generateBtn = document.getElementById('btn-generate-orders-today') as HTMLButtonElement | null
   generateBtn?.addEventListener('click', async () => {
     generatedOrders = await generateOrdersFromShortages(getFilteredRows())
-    allOrders = await getRecentOrders(100)
-    showAllOrders = false
     clearSuggestedQtyDraft()
     refreshUI()
-    showToast('Porositë u gjeneruan sipas furnitorit.')
+    showToast('Porositë e ditës së sotme u gjeneruan.')
     document.getElementById('owner-orders-panel')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
   })
 
-  Promise.all([getTodayShortages(), getProducts(), loadAccountInfo(), getRecentOrders()]).then(
-    ([rows, productRows, _account, recentOrders]) => {
+  Promise.all([getTodayShortages(), getProducts(), loadAccountInfo()]).then(
+    ([rows, productRows, _account]) => {
       shortages = applySuggestedQtyDraft(rows)
       products = productRows
-      allOrders = recentOrders
       generatedOrders = []
-      showAllOrders = false
       refreshUI()
     }
   )

@@ -95,6 +95,69 @@ export function addProduct(input: {
   return { ok: true, products: updated }
 }
 
+export function updateProduct(
+  id: string,
+  input: {
+    name: string
+    supplier: string
+    category: ProductCategory
+    aliases?: string[]
+  }
+): { ok: true; products: MockProduct[] } | { ok: false; message: string } {
+  const name = input.name.trim()
+  const supplier = input.supplier.trim()
+  if (!name) return { ok: false, message: 'Shkruaj emrin e barit.' }
+  if (!supplier) return { ok: false, message: 'Shkruaj furnitorin.' }
+
+  const products = getProducts()
+  const idx = products.findIndex((p) => p.id === id)
+  if (idx === -1) return { ok: false, message: 'Produkti nuk u gjet.' }
+
+  const duplicate = products.some(
+    (p) =>
+      p.id !== id &&
+      normalize(p.name) === normalize(name) &&
+      normalize(p.supplier) === normalize(supplier)
+  )
+  if (duplicate) return { ok: false, message: 'Ekziston produkt me këtë emër për të njëjtin furnitor.' }
+
+  const next: MockProduct = {
+    ...products[idx],
+    name,
+    supplier,
+    category: input.category,
+    aliases: input.aliases?.filter(Boolean) ?? [],
+  }
+  const updated = [...products]
+  updated[idx] = next
+  localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(updated))
+
+  const shortages = getShortages()
+  let shortageTouched = false
+  shortages.forEach((row) => {
+    if (row.product.id !== id) return
+    row.product = { ...next }
+    shortageTouched = true
+  })
+  if (shortageTouched) setShortages(shortages)
+
+  return { ok: true, products: updated }
+}
+
+export function deleteProduct(id: string): { ok: true; products: MockProduct[] } | { ok: false; message: string } {
+  const products = getProducts()
+  const exists = products.some((p) => p.id === id)
+  if (!exists) return { ok: false, message: 'Produkti nuk u gjet.' }
+
+  const updated = products.filter((p) => p.id !== id)
+  localStorage.setItem(PRODUCTS_STORAGE_KEY, JSON.stringify(updated))
+
+  const shortages = getShortages().filter((row) => row.product.id !== id)
+  setShortages(shortages)
+
+  return { ok: true, products: updated }
+}
+
 export function getShortages(): MissingItem[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)

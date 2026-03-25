@@ -1,10 +1,12 @@
 import { isSupabaseConfigured, supabase } from './supabase.js'
 import {
   addProduct as addProductMock,
+  deleteProduct as deleteProductMock,
   addShortage as addShortageMock,
   buildOrdersFromShortages as buildOrdersFromShortagesMock,
   deleteShortage as deleteShortageMock,
   getProducts as getProductsMock,
+  updateProduct as updateProductMock,
   getShortages as getShortagesMock,
   updateShortageMeta as updateShortageMetaMock,
   updateSuggestedQty as updateSuggestedQtyMock,
@@ -193,6 +195,121 @@ export async function addProduct(input: {
   })
   if (insertProduct.error) return { ok: false, message: insertProduct.error.message }
 
+  return { ok: true }
+}
+
+export async function updateProduct(input: {
+  id: string
+  name: string
+  supplier: string
+  category: 'barna' | 'front'
+  aliases: string[]
+  producerName?: string
+  lastPaidPrice?: number
+  lastPriceDate?: string
+  defaultOrderQty?: number
+}): Promise<{ ok: true } | { ok: false; message: string }> {
+  if (!isSupabaseConfigured) {
+    const result = updateProductMock(input.id, {
+      name: input.name,
+      supplier: input.supplier,
+      category: input.category,
+      aliases: input.aliases,
+    })
+    return result.ok ? { ok: true } : result
+  }
+
+  const id = input.id.trim()
+  const name = input.name.trim()
+  const supplierName = input.supplier.trim()
+  const producerName = (input.producerName ?? '').trim()
+  const defaultOrderQty = Math.max(1, Number(input.defaultOrderQty ?? 1))
+  const lastPaidPrice =
+    typeof input.lastPaidPrice === 'number' && Number.isFinite(input.lastPaidPrice)
+      ? input.lastPaidPrice
+      : null
+  const lastPriceDate = (input.lastPriceDate ?? '').trim() || null
+
+  if (!id) return { ok: false, message: 'ID e produktit mungon.' }
+  if (!name) return { ok: false, message: 'Shkruaj emrin e barit.' }
+  if (!supplierName) return { ok: false, message: 'Shkruaj furnitorin.' }
+
+  let supplierId: string | null = null
+  const supplierRes = await supabase
+    .from('suppliers')
+    .select('id,name')
+    .ilike('name', supplierName)
+    .limit(1)
+    .maybeSingle()
+  if (supplierRes.data?.id) {
+    supplierId = supplierRes.data.id
+  } else {
+    const insertSupplier = await supabase
+      .from('suppliers')
+      .insert({ name: supplierName })
+      .select('id')
+      .single()
+    if (insertSupplier.error || !insertSupplier.data?.id) {
+      return { ok: false, message: insertSupplier.error?.message ?? 'Nuk u krijua furnitori.' }
+    }
+    supplierId = insertSupplier.data.id
+  }
+
+  const { data: sameSupplierProducts, error: listErr } = await supabase
+    .from('products')
+    .select('id,name')
+    .eq('supplier_id', supplierId)
+  if (listErr) return { ok: false, message: listErr.message }
+  const nameNorm = name.toLocaleLowerCase('sq-AL')
+  const duplicateId =
+    sameSupplierProducts?.find(
+      (r: { id: string; name: string }) =>
+        r.id !== id && r.name.trim().toLocaleLowerCase('sq-AL') === nameNorm
+    )?.id ?? null
+  if (duplicateId) {
+    return { ok: false, message: 'Ekziston produkt me këtë emër për të njëjtin furnitor.' }
+  }
+
+  const { error } = await supabase
+    .from('products')
+    .update({
+      name,
+      supplier_id: supplierId,
+      category: input.category,
+      aliases: input.aliases,
+      producer_name: producerName || null,
+      last_paid_price: lastPaidPrice,
+      last_price_date: lastPriceDate,
+      default_order_qty: defaultOrderQty,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+
+  if (error) return { ok: false, message: error.message }
+  return { ok: true }
+}
+
+export async function deleteProduct(id: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  if (!isSupabaseConfigured) {
+    const result = deleteProductMock(id)
+    return result.ok ? { ok: true } : result
+  }
+  const productId = id.trim()
+  if (!productId) return { ok: false, message: 'ID e produktit mungon.' }
+
+  const { data, error } = await supabase.from('products').delete().eq('id', productId).select('id').maybeSingle()
+  if (error) {
+    if ((error as { code?: string }).code === '23503') {
+      return {
+        ok: false,
+        message: 'Produkti nuk mund të fshihet sepse përdoret në mungesa ose porosi.',
+      }
+    }
+    return { ok: false, message: error.message }
+  }
+  if (!data?.id) {
+    return { ok: false, message: 'Produkti nuk u gjet ose nuk u fshi.' }
+  }
   return { ok: true }
 }
 
