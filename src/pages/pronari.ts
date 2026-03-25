@@ -8,6 +8,7 @@ import {
   deleteProduct,
   deleteShortage,
   generateOrdersFromShortages,
+  getRecentOrders,
   getProducts,
   getTodayShortages,
   markOrderAsSent,
@@ -74,6 +75,8 @@ export function renderPronari(container: HTMLElement, routeSection = 'mungesat')
   let searchQuery = ''
   let sortBy: 'supplier' | 'name' = readStoredShortageSort()
   let generatedOrders: OwnerOrder[] = []
+  let allOrders: OwnerOrder[] = []
+  let showAllOrders = false
   let pendingImportRows: ImportRow[] = []
   let pendingImportIssues: string[] = []
   let importTab: 'manual' | 'file' = 'file'
@@ -721,16 +724,20 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       return copy
     }
     generatedOrders = update(generatedOrders)
+    allOrders = update(allOrders)
   }
 
   function getOrderById(orderId: number): OwnerOrder | undefined {
-    return generatedOrders.find((o) => o.id === orderId)
+    return generatedOrders.find((o) => o.id === orderId) ?? allOrders.find((o) => o.id === orderId)
   }
 
   function resolveOrderFromBtn(btn: HTMLButtonElement): OwnerOrder | undefined {
     const dbId = btn.dataset.orderDbId?.trim()
     if (dbId) {
-      return generatedOrders.find((o) => o.dbId === dbId)
+      return (
+        generatedOrders.find((o) => o.dbId === dbId) ??
+        allOrders.find((o) => o.dbId === dbId)
+      )
     }
     const orderId = Number(btn.dataset.orderId)
     if (!Number.isFinite(orderId)) return undefined
@@ -748,11 +755,21 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
   }
 
   function renderOrdersPanel(): string {
-    const ordersToRender = generatedOrders
+    const ordersToRender = section === 'mungesat' ? generatedOrders : showAllOrders ? allOrders : generatedOrders
     if (!ordersToRender.length) {
+      if (section === 'mungesat') {
+        return `<div class="premium-empty">
+          <div class="premium-empty-title">Nuk ka porosi të gjeneruara për sot</div>
+          <p class="premium-empty-copy">Kliko «Gjenero porositë e ditës së sotme» për t'i krijuar porositë.</p>
+        </div>`
+      }
       return `<div class="premium-empty">
-        <div class="premium-empty-title">Nuk ka porosi të ditës së sotme</div>
-        <p class="premium-empty-copy">Kliko «Gjenero porositë e ditës së sotme» për t'i krijuar porositë.</p>
+        <div class="premium-empty-title">${showAllOrders ? 'Nuk ka porosi në histori' : 'Nuk ka porosi të gjeneruara tani'}</div>
+        <p class="premium-empty-copy">${
+          showAllOrders
+            ? 'Ende nuk ka porosi të ruajtura.'
+            : 'Kliko «Gjenero porositë sipas furnitorit» për të krijuar porositë.'
+        }</p>
       </div>`
     }
     return `
@@ -850,7 +867,10 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     const statUrgent = document.getElementById('owner-stat-urgent')
     const sortHint = document.getElementById('owner-sort-hint')
     if (statShortages) statShortages.textContent = String(shortages.length)
-    if (statOrders) statOrders.textContent = String(generatedOrders.length)
+    if (statOrders)
+      statOrders.textContent = String(
+        section === 'mungesat' ? generatedOrders.length : showAllOrders ? allOrders.length : generatedOrders.length
+      )
     if (statUrgent) statUrgent.textContent = String(shortages.filter((s) => s.urgent).length)
     if (sortHint) sortHint.textContent = sortBy === 'name' ? 'Renditur sipas emrit' : 'Renditur sipas furnitorit'
     const sortSelectEl = document.getElementById('owner-sort') as HTMLSelectElement | null
@@ -966,6 +986,9 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                 Ngarko file (Excel/CSV)
               </button>
               <input id="import-csv-input" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="hidden" />
+              <button type="button" id="btn-generate-orders" class="${section === 'porosite' ? 'premium-btn-primary inline-flex' : 'hidden'} owner-generate-btn max-w-full flex-wrap items-center justify-center gap-2 rounded-xl px-3 py-2 text-[11px] font-semibold sm:px-4 sm:text-xs">
+                Gjenero porositë sipas furnitorit
+              </button>
               <div class="owner-header-actions flex items-center justify-end gap-2">
                 <button type="button" data-theme-toggle="1" class="theme-toggle-chip inline-flex h-9 w-9 items-center justify-center rounded-full text-sm font-semibold"></button>
                 <div id="owner-account-wrap" class="relative">
@@ -1049,16 +1072,22 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             <div id="owner-orders-panel" class="premium-card p-4">
               <div class="flex items-center justify-between mb-2">
                 <h2 class="text-base font-semibold text-slate-900">Porositë të ndara sipas furnitorit</h2>
+                <button data-action="show-all" class="${section === 'porosite' ? '' : 'hidden '}premium-btn-ghost rounded-lg px-2.5 py-1 text-[11px]">${
+                  showAllOrders ? 'Shfaq vetëm të rejat' : 'Shiko të gjitha'
+                }</button>
               </div>
               <div id="owner-orders-list" class="space-y-2">${renderOrdersPanel()}</div>
-              <div class="mt-3">
-                <button type="button" id="btn-generate-orders-today" class="premium-btn-primary inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-[11px] font-semibold sm:px-4 sm:text-xs">
+              <div class="${section === 'mungesat' ? '' : 'hidden '}mt-3">
+                <button
+                  type="button"
+                  id="btn-generate-orders-today"
+                  class="premium-btn-primary inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-[11px] font-semibold sm:px-4 sm:text-xs"
+                >
                   Gjenero porositë e ditës së sotme
                 </button>
               </div>
             </div>
           </div>
-
           <div class="${section === 'import' ? '' : 'hidden '}space-y-3">
               <div class="premium-card p-4">
                 <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
@@ -1603,6 +1632,21 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       return
     }
 
+    if (action === 'show-all') {
+      if (section !== 'porosite') return
+      showAllOrders = !showAllOrders
+      if (showAllOrders) {
+        allOrders = await getRecentOrders(100)
+      }
+      refreshUI()
+      showToast(
+        showAllOrders
+          ? `Po shfaqen të gjitha porositë (${allOrders.length}).`
+          : `Po shfaqen vetëm porositë e gjeneruara tani (${generatedOrders.length}).`
+      )
+      return
+    }
+
     if (action === 'apply-import') {
       if (!pendingImportRows.length) {
         showToast('Nuk ka rreshta valid për import.')
@@ -1650,20 +1694,31 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     void handleContainerClick(event as MouseEvent)
   }
 
-  const generateBtn = document.getElementById('btn-generate-orders-today') as HTMLButtonElement | null
-  generateBtn?.addEventListener('click', async () => {
+  const runGenerateOrders = async (): Promise<void> => {
     generatedOrders = await generateOrdersFromShortages(getFilteredRows())
+    allOrders = await getRecentOrders(100)
+    showAllOrders = false
     clearSuggestedQtyDraft()
     refreshUI()
-    showToast('Porositë e ditës së sotme u gjeneruan.')
+    showToast('Porositë u gjeneruan sipas furnitorit.')
     document.getElementById('owner-orders-panel')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  }
+  const generateBtn = document.getElementById('btn-generate-orders') as HTMLButtonElement | null
+  const generateTodayBtn = document.getElementById('btn-generate-orders-today') as HTMLButtonElement | null
+  generateBtn?.addEventListener('click', () => {
+    void runGenerateOrders()
+  })
+  generateTodayBtn?.addEventListener('click', () => {
+    void runGenerateOrders()
   })
 
-  Promise.all([getTodayShortages(), getProducts(), loadAccountInfo()]).then(
-    ([rows, productRows, _account]) => {
+  Promise.all([getTodayShortages(), getProducts(), loadAccountInfo(), getRecentOrders()]).then(
+    ([rows, productRows, _account, recentOrders]) => {
       shortages = applySuggestedQtyDraft(rows)
       products = productRows
+      allOrders = recentOrders
       generatedOrders = []
+      showAllOrders = false
       refreshUI()
     }
   )
