@@ -10,14 +10,36 @@ import {
   setPasswordRecoveryPending,
   syncPasswordRecoveryFromUrl,
 } from './lib/auth.js'
-import { renderLogin } from './pages/login.js'
-import { renderMungesat } from './pages/mungesat.js'
-import { renderPronari } from './pages/pronari.js'
 import { applyStoredTheme, bindThemeToggleButtons } from './lib/theme.js'
 import './style.css'
 
 const app = document.getElementById('app')!
 const SESSION_GUARD_INTERVAL_MS = 30000
+let loginPageModulePromise: Promise<typeof import('./pages/login.js')> | null = null
+let workerPageModulePromise: Promise<typeof import('./pages/mungesat.js')> | null = null
+let ownerPageModulePromise: Promise<typeof import('./pages/pronari.js')> | null = null
+
+async function renderLoginPage(container: HTMLElement): Promise<void> {
+  loginPageModulePromise ??= import('./pages/login.js')
+  const { renderLogin } = await loginPageModulePromise
+  renderLogin(container)
+}
+
+async function renderWorkerPage(container: HTMLElement): Promise<void> {
+  workerPageModulePromise ??= import('./pages/mungesat.js')
+  const { renderMungesat } = await workerPageModulePromise
+  renderMungesat(container, 'mungesat')
+}
+
+async function renderOwnerPage(
+  container: HTMLElement,
+  section: 'dashboard' | 'mungesat' | 'porosite' | 'import' | 'settings' | 'profile' | 'kompania' | 'ekipa',
+  role: 'OWNER' | 'MANAGER' | 'WORKER'
+): Promise<void> {
+  ownerPageModulePromise ??= import('./pages/pronari.js')
+  const { renderPronari } = await ownerPageModulePromise
+  renderPronari(container, section, role)
+}
 
 async function disableLocalServiceWorkerCache(): Promise<void> {
   const isLocalhost =
@@ -90,7 +112,7 @@ async function render(): Promise<void> {
     if (!recoveryMode && hasUserSession) {
       const sessionAllowed = await ensureCurrentSessionIsActive()
       if (!sessionAllowed) {
-        renderLogin(app)
+        await renderLoginPage(app)
         bindThemeToggleButtons(document)
         return
       }
@@ -103,7 +125,7 @@ async function render(): Promise<void> {
         return
       }
     }
-    renderLogin(app)
+    await renderLoginPage(app)
     bindThemeToggleButtons(document)
     return
   }
@@ -123,7 +145,7 @@ async function render(): Promise<void> {
   }
 
   if (route === '/mungesat' || route.startsWith('/mungesat/')) {
-    renderMungesat(app, 'mungesat')
+    await renderWorkerPage(app)
     bindThemeToggleButtons(document)
     return
   }
@@ -147,7 +169,7 @@ async function render(): Promise<void> {
       window.location.hash = '#/pronari'
       return
     }
-    renderPronari(app, section, role === 'OWNER' ? 'OWNER' : role === 'MANAGER' ? 'MANAGER' : 'WORKER')
+    await renderOwnerPage(app, section, role === 'OWNER' ? 'OWNER' : role === 'MANAGER' ? 'MANAGER' : 'WORKER')
     bindThemeToggleButtons(document)
     return
   }

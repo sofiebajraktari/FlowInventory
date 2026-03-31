@@ -1,7 +1,6 @@
 import { getProfile, signOut } from '../lib/auth.js'
 import { isSupabaseConfigured, supabase } from '../lib/supabase.js'
 import { getMockUser } from '../types.js'
-import { jsPDF } from 'jspdf'
 import { rankProductsForWorkerSearch } from '../lib/fuzzyProductSearch.js'
 import {
   addMungese,
@@ -1619,6 +1618,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
   }
 
   async function downloadOrderPdf(order: OwnerOrder): Promise<void> {
+    const { jsPDF } = await import('jspdf')
     const doc = new jsPDF({ unit: 'mm', format: 'a4' })
     const pageWidth = doc.internal.pageSize.getWidth()
     const pageHeight = doc.internal.pageSize.getHeight()
