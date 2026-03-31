@@ -1,4 +1,4 @@
-export type UserRole = 'OWNER' | 'WORKER'
+export type UserRole = 'OWNER' | 'MANAGER' | 'WORKER'
 
 export interface Profile {
   role: UserRole

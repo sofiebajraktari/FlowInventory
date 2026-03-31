@@ -2,7 +2,6 @@ import {
   signIn,
   signOut,
   redirectByRole,
-  requestPasswordReset,
   completePasswordRecovery,
   clearPasswordRecoveryPending,
   isPasswordRecoveryPending,
@@ -23,7 +22,7 @@ function mapLoginError(err: unknown): string {
   const lower = msg.toLowerCase()
 
   if (lower.includes('invalid login credentials')) {
-    return 'Email ose fjalëkalim i pasaktë.'
+    return 'Email/username ose fjalëkalim i pasaktë.'
   }
   if (lower.includes('email not confirmed')) {
     return 'Verifiko emailin para kyçjes.'
@@ -32,28 +31,6 @@ function mapLoginError(err: unknown): string {
     return 'Shumë tentativa. Prit pak dhe provo përsëri.'
   }
   return msg
-}
-
-function mapResetError(err: unknown): string {
-  if (!(err instanceof Error)) return 'Dërgimi i linkut dështoi.'
-  const msg = (err.message || '').toLowerCase()
-  if (msg.includes('invalid email')) return 'Shkruaj një email valid.'
-  if (msg.includes('rate limit')) return 'Shumë kërkesa. Prit pak dhe provo përsëri.'
-  return 'Dërgimi i linkut dështoi.'
-}
-
-function animateAuthSwitch(targetHash: string): void {
-  const shell = document.getElementById('auth-shell')
-  sessionStorage.setItem(AUTH_SWITCH_KEY, 'to-register')
-  if (!shell) {
-    window.location.hash = targetHash
-    return
-  }
-  shell.classList.add('auth-switch-to-register')
-  shell.classList.add('auth-switching')
-  window.setTimeout(() => {
-    window.location.hash = targetHash
-  }, 300)
 }
 
 export function renderLogin(container: HTMLElement): void {
@@ -99,10 +76,10 @@ export function renderLogin(container: HTMLElement): void {
               `
                   : `
               <div class="auth-field">
-                <label for="email" class="auth-label">Email</label>
+                <label for="email" class="auth-label">Email ose Username</label>
                 <div class="auth-input-with-icon">
                   <span class="auth-input-icon" aria-hidden="true">${iconMail}</span>
-                  <input type="email" id="email" name="email" required placeholder="Shkruaj email-in" autocomplete="email" class="auth-input auth-input-has-icon" />
+                  <input type="text" id="email" name="email" required placeholder="Shkruaj email ose username" autocomplete="username" class="auth-input auth-input-has-icon" />
                 </div>
               </div>
               <div class="auth-field">
@@ -118,17 +95,16 @@ export function renderLogin(container: HTMLElement): void {
                   <input type="checkbox" id="remember-me" />
                   <span>Remember me</span>
                 </label>
-                <button type="button" id="forgot-password" class="auth-link auth-link-muted">Forgot password?</button>
               </div>
               `
               }
-              <p id="login-error" class="auth-error" aria-live="polite"></p>
-              <button type="submit" id="login-btn" class="auth-primary-button">${recoveryMode ? 'Ruaj fjalëkalimin' : 'Kyçu'}</button>
               ${
                 recoveryMode
                   ? ''
-                  : '<p class="auth-switch-inline">Nuk ke llogari? <button type="button" id="btn-regjistrohu-inline" class="auth-switch-link">Regjistrohu</button></p>'
+                  : '<p class="text-[11px] text-slate-500">Mund të kyçesh me email ose username.</p>'
               }
+              <p id="login-error" class="auth-error" aria-live="polite"></p>
+              <button type="submit" id="login-btn" class="auth-primary-button">${recoveryMode ? 'Ruaj fjalëkalimin' : 'Kyçu'}</button>
             </form>
           </div>
         </section>
@@ -138,23 +114,19 @@ export function renderLogin(container: HTMLElement): void {
           <p class="auth-neo-panel-copy auth-neo-panel-copy-min">
             Nga mungesat tek porositë, çdo hap i operimit ditor qëndron i sinkronizuar në një rrjedhë të vetme.
           </p>
-          <button type="button" id="btn-regjistrohu" class="auth-neo-panel-btn">${recoveryMode ? 'Kthehu te kyçja' : 'Regjistrohu'}</button>
+          <p class="text-xs text-slate-500">${recoveryMode ? '' : 'Llogaritë krijohen vetëm nga administratori.'}</p>
         </aside>
       </div>
     </div>
   `
-
   const form = document.getElementById('login-form') as HTMLFormElement
   const errorEl = document.getElementById('login-error')!
   const btn = document.getElementById('login-btn') as HTMLButtonElement
-  const btnRegjistrohu = document.getElementById('btn-regjistrohu')!
-  const btnRegjistrohuInline = document.getElementById('btn-regjistrohu-inline') as HTMLButtonElement | null
   const emailInput = document.getElementById('email') as HTMLInputElement | null
   const passwordInput = document.getElementById('password') as HTMLInputElement | null
   const passwordConfirmInput = document.getElementById('password-confirm') as HTMLInputElement | null
   const togglePasswordBtn = document.getElementById('toggle-login-password') as HTMLButtonElement | null
   const rememberMe = document.getElementById('remember-me') as HTMLInputElement | null
-  const forgotPasswordBtn = document.getElementById('forgot-password') as HTMLButtonElement | null
   const shell = document.getElementById('auth-shell')
 
   const clearInputError = (...inputs: Array<HTMLInputElement | null>): void => {
@@ -178,17 +150,9 @@ export function renderLogin(container: HTMLElement): void {
     })
   }
 
-  btnRegjistrohu.addEventListener('click', () => {
-    if (recoveryMode) {
-      clearPasswordRecoveryPending()
-      window.location.hash = '#/kycu'
-      return
-    }
-    animateAuthSwitch('#/regjistrohu')
-  })
-  btnRegjistrohuInline?.addEventListener('click', () => {
-    animateAuthSwitch('#/regjistrohu')
-  })
+  if (recoveryMode) {
+    clearPasswordRecoveryPending()
+  }
 
   if (!recoveryMode) {
     try {
@@ -217,27 +181,6 @@ export function renderLogin(container: HTMLElement): void {
     togglePasswordBtn.setAttribute('aria-label', isPassword ? 'Fshih fjalëkalimin' : 'Shfaq fjalëkalimin')
   })
 
-  forgotPasswordBtn?.addEventListener('click', async () => {
-    errorEl.textContent = ''
-    errorEl.classList.remove('auth-error-success')
-    const email = (emailInput?.value ?? '').trim()
-    if (!email) {
-      markInputError(emailInput)
-      setError('Shkruaj emailin për rikthim të fjalëkalimit.')
-      return
-    }
-    clearInputError(emailInput)
-    forgotPasswordBtn.disabled = true
-    try {
-      await requestPasswordReset(email)
-      setSuccess('Linku për reset u dërgua në email.')
-    } catch (err) {
-      setError(mapResetError(err))
-    } finally {
-      forgotPasswordBtn.disabled = false
-    }
-  })
-
   form.addEventListener('submit', async (e) => {
     e.preventDefault()
     errorEl.textContent = ''
@@ -249,9 +192,14 @@ export function renderLogin(container: HTMLElement): void {
     const password = passwordEl?.value ?? ''
     const passwordConfirm = passwordConfirmEl?.value ?? ''
     clearInputError(emailEl, passwordEl, passwordConfirmEl)
-    if (!recoveryMode && !email.includes('@')) {
+    if (!recoveryMode && !email) {
       markInputError(emailEl)
-      setError('Shkruaj një email valid.')
+      setError('Shkruaj email ose username.')
+      return
+    }
+    if (!recoveryMode && /\s/.test(email)) {
+      markInputError(emailEl)
+      setError('Email ose username nuk duhet të ketë hapësira.')
       return
     }
     if (recoveryMode) {

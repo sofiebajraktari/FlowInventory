@@ -30,10 +30,26 @@ function getThemeLabel(mode: ThemeMode): string {
 
 export function updateThemeToggleLabels(root: ParentNode = document): void {
   const mode: ThemeMode = document.body.classList.contains('theme-dark') ? 'dark' : 'light'
+  const nextLabel = mode === 'dark' ? 'Light mode' : 'Dark mode'
+  const switchAria = mode === 'dark' ? 'Kalo në light mode' : 'Kalo në dark mode'
+  const icon = getThemeLabel(mode)
   root.querySelectorAll<HTMLElement>('[data-theme-toggle]').forEach((el) => {
-    el.textContent = getThemeLabel(mode)
-    el.setAttribute('aria-label', mode === 'dark' ? 'Kalo në light mode' : 'Kalo në dark mode')
-    el.setAttribute('title', mode === 'dark' ? 'Light mode' : 'Dark mode')
+    const fixedLabel = el.dataset.themeFixedLabel
+    const iconEl = el.querySelector<HTMLElement>('[data-theme-icon]')
+    const labelEl = el.querySelector<HTMLElement>('[data-theme-label]')
+    if (fixedLabel) {
+      el.textContent = fixedLabel
+      el.setAttribute('aria-label', switchAria)
+      el.setAttribute('title', nextLabel)
+      return
+    }
+    if (iconEl) iconEl.textContent = icon
+    if (labelEl) labelEl.textContent = nextLabel
+    if (!iconEl && !labelEl) {
+      el.textContent = icon
+    }
+    el.setAttribute('aria-label', switchAria)
+    el.setAttribute('title', nextLabel)
   })
 }
 

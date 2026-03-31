@@ -1,6 +1,6 @@
 import { supabase, isSupabaseConfigured } from './supabase.js'
 import type { Profile, UserRole } from '../types.js'
-import { setMockUser } from '../types.js'
+import { getMockUser, setMockUser } from '../types.js'
 
 const OAUTH_PENDING_ROLE_KEY = 'flowinventory_oauth_pending_role'
 const PASSWORD_RECOVERY_KEY = 'flowinventory_password_recovery_pending'
@@ -14,8 +14,40 @@ function requireSupabase(): void {
 function normalizeRole(value: unknown): UserRole | null {
   if (typeof value !== 'string') return null
   const role = value.toUpperCase()
-  if (role === 'OWNER' || role === 'WORKER') return role
+  if (role === 'OWNER' || role === 'MANAGER' || role === 'WORKER') return role
   return null
+}
+
+function isLikelyEmail(value: string): boolean {
+  return value.includes('@')
+}
+
+function isLookupRpcMissing(error: unknown): boolean {
+  const code = typeof error === 'object' && error && 'code' in error ? String((error as any).code ?? '') : ''
+  const msg = typeof error === 'object' && error && 'message' in error ? String((error as any).message ?? '') : ''
+  const lower = msg.toLowerCase()
+  return code === 'PGRST202' || lower.includes('lookup_login_email') || lower.includes('could not find the function')
+}
+
+async function resolveLoginEmail(identifier: string): Promise<string> {
+  const normalized = identifier.trim().toLocaleLowerCase('sq-AL')
+  if (!normalized) throw new Error('Shkruaj email ose username.')
+  if (isLikelyEmail(normalized)) return normalized
+
+  const lookup = await supabase.rpc('lookup_login_email', { p_identifier: normalized })
+  if (!lookup.error) {
+    const email = String(lookup.data ?? '').trim().toLocaleLowerCase('sq-AL')
+    if (email) return email
+    throw new Error('Ky username nuk u gjet.')
+  }
+
+  if (isLookupRpcMissing(lookup.error)) {
+    throw new Error(
+      "Login me username nuk është aktiv në databazë. Ekzekuto migrimin që krijon RPC 'lookup_login_email'."
+    )
+  }
+
+  throw new Error(lookup.error.message || 'Kyçja dështoi.')
 }
 
 async function ensureProfileAfterLogin(): Promise<Profile | null> {
@@ -46,16 +78,28 @@ export async function getProfile(): Promise<Profile | null> {
 
 export function redirectByRole(role: UserRole): void {
   if (role === 'WORKER') window.location.hash = '#/mungesat'
-  else if (role === 'OWNER') window.location.hash = '#/pronari'
+  else if (role === 'OWNER' || role === 'MANAGER') window.location.hash = '#/pronari'
   else window.location.hash = '#/kycu'
 }
 
-export async function signIn(email: string, password: string): Promise<Profile> {
+export async function signIn(identifier: string, password: string): Promise<Profile> {
   requireSupabase()
-  const { error } = await supabase.auth.signInWithPassword({ email, password })
-  if (error) throw error
+  const loginEmail = await resolveLoginEmail(identifier)
+
+  const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password })
+  if (error) {
+    const lower = String(error.message ?? '').toLowerCase()
+    if (lower.includes('email not confirmed')) throw new Error('Verifiko emailin para kyçjes.')
+    if (lower.includes('rate limit')) throw new Error('Shumë tentativa. Prit pak dhe provo përsëri.')
+    if (lower.includes('database error querying schema')) {
+      throw new Error('Useri është krijuar me skemë jo të plotë në Supabase Auth. Ekzekuto migrimin e fundit SQL dhe provo përsëri.')
+    }
+    if (lower.includes('invalid login credentials')) throw new Error('Email/username ose fjalëkalim i pasaktë.')
+    throw new Error(error.message || 'Kyçja dështoi.')
+  }
+
   const profile = await ensureProfileAfterLogin()
-  if (!profile) throw new Error('Profili i përdoruesit mungon. Bëj regjistrim përsëri ose kontakto administratorin.')
+  if (!profile) throw new Error('Profili i përdoruesit mungon.')
   return profile
 }
 
@@ -122,6 +166,26 @@ export async function completePasswordRecovery(newPassword: string): Promise<voi
   const { error } = await supabase.auth.updateUser({ password: newPassword })
   if (error) throw error
   clearPasswordRecoveryPending()
+}
+
+export async function updateMyProfileName(firstName: string, lastName: string): Promise<void> {
+  const nextFirst = firstName.trim()
+  const nextLast = lastName.trim()
+  if (!nextFirst || !nextLast) throw new Error('Emri dhe mbiemri janë të detyrueshëm.')
+  if (!isSupabaseConfigured) {
+    const current = getMockUser()
+    if (current) {
+      setMockUser({ ...current, firstName: nextFirst, lastName: nextLast })
+    }
+    return
+  }
+  const { error } = await supabase.auth.updateUser({
+    data: {
+      first_name: nextFirst,
+      last_name: nextLast,
+    },
+  })
+  if (error) throw error
 }
 
 export function isPasswordRecoveryPending(): boolean {

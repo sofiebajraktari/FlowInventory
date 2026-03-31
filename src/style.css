@@ -3308,6 +3308,14 @@ button:focus-visible {
   background: #f8fafc;
 }
 
+.owner-account-theme-icon {
+  display: inline-flex;
+  width: 1rem;
+  justify-content: center;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
 .premium-top-search {
   height: 2.4rem;
   width: 100%;
@@ -4098,6 +4106,10 @@ body.theme-dark .auth-hero-feature {
 body.theme-dark .theme-toggle-chip {
   border-color: #334155;
   background: rgba(15, 23, 42, 0.9);
+  color: #cbd5e1;
+}
+
+body.theme-dark .owner-account-menu-item-theme {
   color: #cbd5e1;
 }
 

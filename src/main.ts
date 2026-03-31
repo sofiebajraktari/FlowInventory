@@ -10,7 +10,6 @@ import {
   syncPasswordRecoveryFromUrl,
 } from './lib/auth.js'
 import { renderLogin } from './pages/login.js'
-import { renderRegister } from './pages/register.js'
 import { renderMungesat } from './pages/mungesat.js'
 import { renderPronari } from './pages/pronari.js'
 import { applyStoredTheme, bindThemeToggleButtons } from './lib/theme.js'
@@ -40,10 +39,16 @@ function getRoute(): string {
   return hash.startsWith('/') ? hash : '/' + hash
 }
 
-function getOwnerSection(route: string): 'mungesat' | 'porosite' | 'import' {
+function getOwnerSection(route: string): 'dashboard' | 'mungesat' | 'porosite' | 'import' | 'settings' | 'profile' | 'kompania' | 'ekipa' {
+  if (route === '/pronari' || route === '/dashboard' || route.startsWith('/pronari/dashboard')) return 'dashboard'
+  if (route === '/mungesat-pronari' || route.startsWith('/pronari/mungesat')) return 'mungesat'
   if (route === '/porosite' || route.startsWith('/pronari/porosite')) return 'porosite'
   if (route === '/import' || route.startsWith('/pronari/import')) return 'import'
-  return 'mungesat'
+  if (route === '/settings' || route.startsWith('/pronari/settings')) return 'settings'
+  if (route === '/profile' || route.startsWith('/pronari/profile')) return 'profile'
+  if (route === '/kompania' || route.startsWith('/pronari/kompania')) return 'kompania'
+  if (route === '/ekipa' || route.startsWith('/pronari/ekipa')) return 'ekipa'
+  return 'dashboard'
 }
 
 async function render(): Promise<void> {
@@ -69,7 +74,12 @@ async function render(): Promise<void> {
     return
   }
 
-  if (route === '/kycu' || route === '/regjistrohu') {
+  if (route === '/regjistrohu') {
+    window.location.hash = '#/kycu'
+    return
+  }
+
+  if (route === '/kycu') {
     const hasUserSession = await hasSession()
     const recoveryMode = isPasswordRecoveryPending() && route === '/kycu' && hasUserSession
     if (isPasswordRecoveryPending() && route === '/kycu' && !hasUserSession) {
@@ -85,8 +95,7 @@ async function render(): Promise<void> {
         return
       }
     }
-    if (route === '/kycu') renderLogin(app)
-    else renderRegister(app)
+    renderLogin(app)
     bindThemeToggleButtons(document)
     return
   }
@@ -107,13 +116,27 @@ async function render(): Promise<void> {
     bindThemeToggleButtons(document)
     return
   }
-  if (route === '/pronari' || route.startsWith('/pronari/') || route === '/porosite' || route === '/import') {
-    if (profile.role !== 'OWNER') {
+  if (
+    route === '/pronari' ||
+    route.startsWith('/pronari/') ||
+    route === '/porosite' ||
+    route === '/import' ||
+    route === '/settings' ||
+    route === '/profile' ||
+    route === '/kompania' ||
+    route === '/ekipa'
+  ) {
+    const role = String(profile.role)
+    if (role !== 'OWNER' && role !== 'MANAGER') {
       window.location.hash = '#/mungesat'
       return
     }
     const section = getOwnerSection(route)
-    renderPronari(app, section)
+    if ((section === 'settings' || section === 'kompania') && role !== 'OWNER') {
+      window.location.hash = '#/pronari'
+      return
+    }
+    renderPronari(app, section, role === 'OWNER' ? 'OWNER' : role === 'MANAGER' ? 'MANAGER' : 'WORKER')
     bindThemeToggleButtons(document)
     return
   }
