@@ -1158,9 +1158,9 @@ export function renderPronari(
   function openWhatsAppPhoneModal(supplier: string, initial = ''): Promise<string | null> {
     return new Promise((resolve) => {
       const overlay = document.createElement('div')
-      overlay.className = 'fixed inset-0 z-[70] bg-slate-900/18 flex items-center justify-center p-4'
+      overlay.className = 'owner-modal-overlay fixed inset-0 z-[70] bg-slate-900/18 flex items-center justify-center p-4'
       overlay.innerHTML = `
-        <div class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+        <div class="owner-modal-card w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
           <h3 class="text-lg font-semibold text-slate-900 mb-1">Numri i WhatsApp</h3>
           <p class="text-sm text-slate-600 mb-4">
             Shkruaj numrin për furnitorin <strong>${supplier}</strong> (shembull: 38344111222).
@@ -1202,9 +1202,9 @@ export function renderPronari(
   } | null> {
     return new Promise((resolve) => {
       const overlay = document.createElement('div')
-      overlay.className = 'fixed inset-0 z-[70] bg-slate-900/18 flex items-center justify-center p-4'
+      overlay.className = 'owner-modal-overlay fixed inset-0 z-[70] bg-slate-900/18 flex items-center justify-center p-4'
       overlay.innerHTML = `
-        <div class="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+        <div class="owner-modal-card w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
           <h3 class="text-lg font-semibold text-slate-900 mb-1">Përditëso mungesën</h3>
           <p class="text-sm text-slate-500 mb-4">Ndrysho të dhënat për <strong>${initial.productName}</strong>.</p>
           <div class="grid gap-3 md:grid-cols-2">
@@ -1271,9 +1271,9 @@ export function renderPronari(
         .join('')
 
       const overlay = document.createElement('div')
-      overlay.className = 'fixed inset-0 z-[70] bg-slate-900/18 flex items-center justify-center p-4'
+      overlay.className = 'owner-modal-overlay fixed inset-0 z-[70] bg-slate-900/18 flex items-center justify-center p-4'
       overlay.innerHTML = `
-        <div class="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+        <div class="owner-modal-card w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
           <h3 class="text-lg font-semibold text-slate-900 mb-1">Ndrysho furnitorin</h3>
           <p class="text-sm text-slate-500 mb-4">Zgjidh furnitorin për <strong>${initial.productName}</strong>.</p>
           <label class="text-sm text-slate-700 block">
@@ -1316,9 +1316,9 @@ export function renderPronari(
   } | null> {
     return new Promise((resolve) => {
       const overlay = document.createElement('div')
-      overlay.className = 'fixed inset-0 z-[70] bg-slate-900/18 flex items-center justify-center p-4'
+      overlay.className = 'owner-modal-overlay fixed inset-0 z-[70] bg-slate-900/18 flex items-center justify-center p-4'
       overlay.innerHTML = `
-        <div class="w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+        <div class="owner-modal-card w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
           <h3 class="text-lg font-semibold text-slate-900 mb-1">Përditëso produktin</h3>
           <p class="text-sm text-slate-500 mb-4">Ndrysho të dhënat bazë të produktit.</p>
           <div class="grid gap-3 md:grid-cols-2">
@@ -1409,9 +1409,9 @@ export function renderPronari(
   } | null> {
     return new Promise((resolve) => {
       const overlay = document.createElement('div')
-      overlay.className = 'fixed inset-0 z-[70] bg-slate-900/18 flex items-center justify-center p-4'
+      overlay.className = 'owner-modal-overlay fixed inset-0 z-[70] bg-slate-900/18 flex items-center justify-center p-4'
       overlay.innerHTML = `
-        <div class="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+        <div class="owner-modal-card w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
           <h3 class="text-lg font-semibold text-slate-900 mb-1">Edito përdoruesin</h3>
           <p class="text-sm text-slate-500 mb-4">Ndrysho aksesin dhe kredencialet për <strong>${initial.label}</strong>.</p>
           <div class="grid gap-3 md:grid-cols-2">
@@ -1512,9 +1512,9 @@ export function renderPronari(
   function openConfirmModal(title: string, description: string): Promise<boolean> {
     return new Promise((resolve) => {
       const overlay = document.createElement('div')
-      overlay.className = 'fixed inset-0 z-[70] bg-slate-900/18 flex items-center justify-center p-4'
+      overlay.className = 'owner-modal-overlay fixed inset-0 z-[70] bg-slate-900/18 flex items-center justify-center p-4'
       overlay.innerHTML = `
-        <div class="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+        <div class="owner-modal-card w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
           <h3 class="text-lg font-semibold text-slate-900 mb-1">${title}</h3>
           <p class="text-sm text-slate-600 mb-5">${description}</p>
           <div class="flex items-center justify-end gap-2">
@@ -2268,7 +2268,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
         const initials = visibleUsername.slice(0, 1).toUpperCase()
         return `
           <tr data-settings-row="${rowId}" class="border-t border-slate-200/80 text-[11px] transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} hover:bg-violet-50/60">
-            <td class="px-3 py-2.5 text-slate-800">
+            <td data-label="Përdoruesi" class="px-3 py-2.5 text-slate-800">
               <div class="flex items-center gap-2.5">
                 <span class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[10px] font-semibold text-white">${initials}</span>
                 <div class="min-w-0 flex-1">
@@ -2280,7 +2280,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                 <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-medium text-slate-600">Modal edit</span>
               </div>
             </td>
-            <td class="px-3 py-2.5 align-top">
+            <td data-label="Aksesi" class="px-3 py-2.5 align-top">
               <div class="flex flex-wrap items-center gap-2">
                 <span class="inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold ${roleBadgeClass}">${role === 'OWNER' ? 'ADMIN' : role}</span>
               </div>
@@ -2288,11 +2288,11 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                 <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${u.isActive ? 'border border-emerald-300 bg-emerald-100 text-emerald-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]' : 'border border-slate-300 bg-slate-100 text-slate-600'}">${u.isActive ? 'Aktiv' : 'Joaktiv'}</span>
               </div>
             </td>
-            <td class="px-3 py-2.5 align-top text-[10px] text-slate-500">
+            <td data-label="Aktiviteti" class="px-3 py-2.5 align-top text-[10px] text-slate-500">
               <p class="font-medium text-slate-700">Krijuar: <span class="text-slate-500">${fmtDate(u.createdAt)}</span></p>
               <p class="mt-1 font-medium text-slate-700">Hyrja fundit: <span class="text-slate-500">${fmtDate(u.lastSignInAt)}</span></p>
             </td>
-            <td class="px-3 py-2.5 text-right align-top">
+            <td data-label="Veprime" class="px-3 py-2.5 text-right align-top">
               ${
                 canManage
                   ? `<div class="inline-flex flex-wrap items-center justify-end gap-2">
@@ -2423,8 +2423,8 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
           </div>
           <span class="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] text-slate-600">${displayUsers.length} përdorues</span>
         </div>
-        <div class="mt-2 overflow-auto rounded-2xl border border-slate-200">
-          <table class="min-w-full text-[11px]">
+        <div class="owner-settings-users-table-wrap mt-2 overflow-auto rounded-2xl border border-slate-200">
+          <table class="owner-settings-users-table min-w-full text-[11px]">
             <thead class="bg-slate-100/90 text-slate-700">
               <tr>
                 <th class="px-3 py-2 text-left font-semibold">Përdoruesi</th>

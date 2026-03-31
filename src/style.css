@@ -4482,4 +4482,126 @@ body.theme-dark .worker-missing-count {
     white-space: normal;
     max-width: 100%;
   }
+
+  .premium-header {
+    padding: 0.65rem 0.75rem;
+  }
+
+  .premium-header h1 {
+    font-size: 1.05rem !important;
+    line-height: 1.25;
+  }
+
+  .premium-top-search-input {
+    font-size: 0.8rem;
+  }
+
+  #owner-account-menu {
+    width: min(92vw, 19rem);
+    right: 0;
+  }
+
+  .owner-modal-overlay {
+    align-items: flex-end;
+    padding: 0.5rem;
+  }
+
+  .owner-modal-card {
+    max-height: calc(100vh - 1rem);
+    overflow: auto;
+    border-radius: 14px;
+    padding: 0.9rem;
+  }
+
+  .owner-modal-card .grid.md\:grid-cols-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .owner-modal-card .text-lg {
+    font-size: 1rem;
+    line-height: 1.25rem;
+  }
+
+  .owner-modal-card .text-sm {
+    font-size: 0.8rem;
+  }
+
+  .owner-settings-users-table-wrap {
+    border-radius: 12px;
+  }
+
+  .owner-settings-users-table thead tr {
+    display: none;
+  }
+
+  .owner-settings-users-table tbody {
+    display: block;
+    padding: 0.25rem;
+  }
+
+  .owner-settings-users-table tbody tr {
+    display: block;
+    margin: 0 0 0.6rem;
+    border: 1px solid #dbe4ef;
+    border-radius: 12px;
+    background: #ffffff;
+    padding: 0.2rem 0.25rem;
+  }
+
+  .owner-settings-users-table td[data-label] {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.7rem;
+    width: 100%;
+    border: 0;
+    padding: 0.42rem 0.5rem;
+    text-align: left !important;
+  }
+
+  .owner-settings-users-table td[data-label]::before {
+    content: attr(data-label);
+    min-width: 5.4rem;
+    color: #64748b;
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  .owner-settings-users-table td[data-label="Veprime"] .inline-flex {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .premium-shell {
+    min-height: calc(100vh - 0.5rem);
+  }
+
+  .premium-main {
+    border-radius: 10px;
+    padding-left: 0.55rem !important;
+    padding-right: 0.55rem !important;
+  }
+
+  .premium-main .premium-card {
+    padding: 0.62rem;
+  }
+
+  .premium-nav-link {
+    padding: 0.55rem 0.7rem;
+    font-size: 0.8rem;
+  }
+
+  #owner-logo-reopen {
+    top: 4.2rem;
+    left: 0.55rem;
+  }
+
+  .owner-generate-btn {
+    font-size: 0.7rem;
+    padding: 0.55rem 0.7rem;
+  }
 }
