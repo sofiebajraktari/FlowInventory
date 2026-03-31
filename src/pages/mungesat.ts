@@ -97,6 +97,7 @@ export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat
   const active = (key: WorkerSection): string => (section === key ? 'premium-nav-link active' : 'premium-nav-link')
   let allProducts: ProductView[] = []
   let currentMatches: ProductView[] = []
+  let currentUserId = ''
 
   function showToast(message: string): void {
     const existing = document.getElementById('worker-toast')
@@ -301,12 +302,27 @@ export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat
     try {
       const [{ data: userData }, profile] = await Promise.all([supabase.auth.getUser(), getProfile()])
       const user = userData.user
+      currentUserId = String(user?.id ?? '').trim()
       const firstName = String(user?.user_metadata?.first_name ?? '').trim()
       const lastName = String(user?.user_metadata?.last_name ?? '').trim()
       const email = String(user?.email ?? '').trim()
       const fullName = [firstName, lastName].filter(Boolean).join(' ').trim()
+      const usernameMeta = String(user?.user_metadata?.username ?? '').trim()
+      let profileUsername = ''
+      if (user?.id) {
+        const profileRes = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', user.id)
+          .maybeSingle()
+        if (!profileRes.error && profileRes.data) {
+          profileUsername = String((profileRes.data as { username?: unknown }).username ?? '').trim()
+        }
+      }
+      const usernameFromEmail = email.includes('@') ? email.split('@')[0]?.trim() ?? '' : ''
+      const visibleUsername = profileUsername || usernameMeta || usernameFromEmail
       const roleLabel = profile?.role === 'OWNER' ? 'Pronari' : 'Punëtor'
-      applyAccountInfo(fullName || email || roleLabel, roleLabel)
+      applyAccountInfo(visibleUsername || fullName || roleLabel, roleLabel)
     } catch {
       applyAccountInfo('Përdorues', 'Llogari')
     }
@@ -314,9 +330,21 @@ export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat
 
   async function refreshMissingList(): Promise<void> {
     const items = await getTodayShortages()
-    missingListDiv.innerHTML = renderMissingList(items)
-    if (statTotal) statTotal.textContent = String(items.length)
-    if (statUrgent) statUrgent.textContent = String(items.filter((x) => x.urgent).length)
+    let visibleItems = items
+    if (isSupabaseConfigured) {
+      let userId = currentUserId
+      if (!userId) {
+        const authRes = await supabase.auth.getUser()
+        userId = String(authRes.data.user?.id ?? '').trim()
+        currentUserId = userId
+      }
+      if (userId) {
+        visibleItems = items.filter((row) => String(row.createdById ?? '').trim() === userId)
+      }
+    }
+    missingListDiv.innerHTML = renderMissingList(visibleItems)
+    if (statTotal) statTotal.textContent = String(visibleItems.length)
+    if (statUrgent) statUrgent.textContent = String(visibleItems.filter((x) => x.urgent).length)
   }
 
   async function addSelectedProduct(productId: string): Promise<void> {
