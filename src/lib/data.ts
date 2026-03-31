@@ -631,6 +631,55 @@ export async function adminUpdateUsername(
   return { ok: true }
 }
 
+export async function adminUpdateUserPassword(
+  userId: string,
+  password: string
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const id = userId.trim()
+  const nextPassword = String(password ?? '')
+  if (!id) return { ok: false, message: 'ID e përdoruesit mungon.' }
+  if (nextPassword.length < 6) {
+    return { ok: false, message: 'Fjalëkalimi duhet të ketë të paktën 6 karaktere.' }
+  }
+  if (!isSupabaseConfigured) return { ok: true }
+
+  const { error } = await supabase.rpc('admin_update_user_password', {
+    p_user_id: id,
+    p_password: nextPassword,
+  })
+  if (!error) return { ok: true }
+
+  const code = String(error.code ?? '').trim()
+  const message = String(error.message ?? '').trim()
+  const lower = message.toLowerCase()
+  const rpcMissing =
+    code === 'PGRST202' ||
+    lower.includes('admin_update_user_password') ||
+    lower.includes('could not find the function')
+
+  if (rpcMissing) {
+    return {
+      ok: false,
+      message:
+        "RPC admin_update_user_password nuk u gjet. Ekzekuto migrimin 20260331193000_admin_update_user_password_rpc.sql dhe pastaj: notify pgrst, 'reload schema'.",
+    }
+  }
+  if (lower.includes('invalid_password')) {
+    return { ok: false, message: 'Fjalëkalimi duhet të ketë të paktën 6 karaktere.' }
+  }
+  if (lower.includes('forbidden_owner_only')) {
+    return { ok: false, message: 'Vetëm OWNER mund të ndryshojë fjalëkalimin e përdoruesve.' }
+  }
+  if (lower.includes('forbidden_other_company')) {
+    return { ok: false, message: 'Përdoruesi nuk i përket kompanisë aktive.' }
+  }
+  if (lower.includes('user_not_found') || lower.includes('auth_user_not_found')) {
+    return { ok: false, message: 'Përdoruesi nuk u gjet.' }
+  }
+
+  return { ok: false, message: message || 'Ndryshimi i fjalëkalimit dështoi.' }
+}
+
 export async function adminSetUserActive(
   userId: string,
   isActive: boolean
@@ -640,9 +689,14 @@ export async function adminSetUserActive(
   if (!isSupabaseConfigured) return { ok: true }
   const companyId = await resolveCurrentCompanyId()
   if (!companyId) return { ok: false, message: 'User jo i kyçur.' }
+  const updatePayload: Record<string, unknown> = {
+    is_active: isActive,
+    updated_at: new Date().toISOString(),
+  }
+  if (!isActive) updatePayload.active_session_id = null
   const { data, error } = await supabase
     .from('profiles')
-    .update({ is_active: isActive, updated_at: new Date().toISOString() })
+    .update(updatePayload)
     .eq('id', id)
     .eq('company_id', companyId)
     .select('id')
@@ -1337,4 +1391,3 @@ export async function markOrderAsSent(order: OwnerOrder): Promise<OwnerOrder> {
   }
   return { ...order, status: 'SENT' }
 }
-

@@ -8,6 +8,7 @@ import {
   adminCreateUser,
   adminDeleteUser,
   adminSetUserActive,
+  adminUpdateUserPassword,
   adminUpdateUsername,
   adminUpdateUserRole,
   addProduct,
@@ -389,11 +390,12 @@ export function renderPronari(
     const buildCurrentUserFallback = async (): Promise<TeamUser[]> => {
       if (!isSupabaseConfigured) {
         const mock = getMockUser()
+        const demoUsername = String(mock?.email ?? '').split('@')[0].trim() || 'demo'
         return [
           {
             id: 'demo-owner',
             email: mock?.email ?? 'demo@flowinventory.local',
-            username: `${mock?.firstName ?? 'Demo'} ${mock?.lastName ?? 'Owner'}`.trim(),
+            username: demoUsername,
             role: String(mock?.role ?? 'OWNER'),
             isActive: true,
             createdAt: '',
@@ -410,8 +412,8 @@ export function renderPronari(
       if (!user) return []
       const username =
         String(user.user_metadata?.username ?? '').trim() ||
-        String(user.email ?? '').split('@')[0]?.trim() ||
-        'admin'
+        String(user.email ?? '').split('@')[0].trim() ||
+        'perdorues'
       return [
         {
           id: String(user.id ?? ''),
@@ -429,6 +431,240 @@ export function renderPronari(
       ]
     }
 
+    if (!canSeeSettings) return []
+    if (!isSupabaseConfigured) {
+      return buildCurrentUserFallback()
+    }
+    let companyId = activeCompanyId
+    const mapProfileRows = (rows: any[]): TeamUser[] =>
+      rows.map((row: any) => ({
+        id: String(row.id ?? ''),
+        email: String(row.email ?? '').trim() || '—',
+        username: String(row.username ?? '').trim() || 'Përdorues',
+        role: String(row.role ?? 'WORKER'),
+        isActive: row.is_active === false ? false : true,
+        createdAt: String(row.created_at ?? ''),
+        lastSignInAt: '',
+        shortagesToday: 0,
+        ordersSentToday: 0,
+        shortagesTotal: 0,
+        lastShortageAt: '',
+      }))
+    if (!companyId) {
+      try {
+        const rpcCompany = await supabase.rpc('current_company_id')
+        if (!rpcCompany.error) {
+          const rpcId = String(rpcCompany.data ?? '').trim()
+          if (rpcId) {
+            companyId = rpcId
+            activeCompanyId = rpcId
+          }
+        }
+      } catch {
+      }
+    }
+    if (!companyId) {
+      try {
+        const { data: authData } = await supabase.auth.getUser()
+        const uid = String(authData.user?.id ?? '').trim()
+        if (uid) {
+          const companyRes = await supabase
+            .from('profiles')
+            .select('company_id')
+            .eq('id', uid)
+            .maybeSingle()
+          if (!companyRes.error && companyRes.data) {
+            companyId = String((companyRes.data as { company_id?: unknown }).company_id ?? '').trim()
+            if (companyId) activeCompanyId = companyId
+          }
+        }
+      } catch {
+      }
+    }
+    if (!companyId) return buildCurrentUserFallback()
+
+    const mapRpcRows = (rows: any[]): TeamUser[] =>
+      rows.map((row: any) => ({
+        id: String(row.id ?? ''),
+        email: String(row.email ?? '').trim() || '—',
+        username: String(row.username ?? '').trim() || 'Përdorues',
+        role: String(row.role ?? 'WORKER'),
+        isActive: row.is_active === false ? false : true,
+        createdAt: String(row.created_at ?? ''),
+        lastSignInAt: String(row.last_sign_in_at ?? ''),
+        shortagesToday: Math.max(0, Number(row.shortages_created_today ?? 0)),
+        ordersSentToday: Math.max(0, Number(row.orders_marked_sent_today ?? 0)),
+        shortagesTotal: Math.max(
+          0,
+          Number(row.shortages_since_created ?? row.shortages_total ?? row.shortages_count ?? 0)
+        ),
+        lastShortageAt: String(row.last_shortage_at ?? ''),
+      }))
+    let rpcMapped: TeamUser[] = []
+    const rpcRes = await supabase.rpc('admin_list_users')
+    if (!rpcRes.error && Array.isArray(rpcRes.data) && rpcRes.data.length > 0) {
+      const rpcRowsRaw = rpcRes.data as any[]
+      const scopedRpcRows =
+        rpcRowsRaw.length > 0 && 'company_id' in (rpcRowsRaw[0] ?? {}) && companyId
+          ? rpcRowsRaw.filter((r) => String((r as any)?.company_id ?? '').trim() === companyId)
+          : rpcRowsRaw
+      rpcMapped = mapRpcRows(scopedRpcRows)
+    }
+
+    let fallbackQuery = supabase
+      .from('profiles')
+      .select('id,email,username,role,is_active,created_at')
+      .order('created_at', { ascending: false })
+    fallbackQuery = fallbackQuery.eq('company_id', companyId)
+    const fallbackRes = await fallbackQuery
+    if (fallbackRes.error) throw new Error(fallbackRes.error.message)
+    const rows = Array.isArray(fallbackRes.data) ? fallbackRes.data : []
+    const mapped = mapProfileRows(rows)
+    let mappedWithMetrics = mapped
+    if (mapped.length > 0) {
+      const userIds = mapped
+        .map((u) => String(u.id ?? '').trim())
+        .filter((id) => Boolean(id) && isUuid(id))
+      if (userIds.length > 0) {
+        const shortageRes = await supabase
+          .from('mungesat')
+          .select('created_by,added_count,created_at,entry_date')
+          .eq('company_id', companyId)
+          .in('created_by', userIds)
+        if (!shortageRes.error && Array.isArray(shortageRes.data)) {
+          const metricByUser = new Map<string, { total: number; last: string }>()
+          for (const row of shortageRes.data as Array<{
+            created_by?: unknown
+            added_count?: unknown
+            created_at?: unknown
+            entry_date?: unknown
+          }>) {
+            const createdBy = String(row.created_by ?? '').trim()
+            if (!createdBy) continue
+            const count = Math.max(1, Number(row.added_count ?? 1))
+            const createdAt = String(row.created_at ?? '').trim()
+            const entryDate = String(row.entry_date ?? '').trim()
+            const candidateDate = createdAt || (entryDate ? `${entryDate}T00:00:00.000Z` : '')
+            const prev = metricByUser.get(createdBy) ?? { total: 0, last: '' }
+            let nextLast = prev.last
+            if (candidateDate) {
+              if (!nextLast || new Date(candidateDate).getTime() > new Date(nextLast).getTime()) {
+                nextLast = candidateDate
+              }
+            }
+            metricByUser.set(createdBy, {
+              total: prev.total + count,
+              last: nextLast,
+            })
+          }
+          mappedWithMetrics = mapped.map((u) => ({
+            ...u,
+            shortagesTotal: metricByUser.get(u.id)?.total ?? 0,
+            lastShortageAt: metricByUser.get(u.id)?.last ?? '',
+          }))
+        }
+      }
+    }
+    const backendRows = mergeTeamUsers(rpcMapped, mappedWithMetrics)
+    if (backendRows.length > 0) {
+      const pending = readPendingSettingsUsers()
+      const combined = mergeTeamUsers(backendRows, pending)
+      writePendingSettingsUsers(pending.filter((p) => !backendRows.some((u) => u.id === p.id)))
+      return combined
+    }
+    const pending = readPendingSettingsUsers()
+    if (pending.length > 0) return pending
+    return buildCurrentUserFallback()
+  }
+
+  async function loadAccountInfo(): Promise<void> {
+    if (!isSupabaseConfigured) {
+      activeCompanyId = 'demo'
+      const mock = getMockUser()
+      accountInfo = {
+        firstName: mock?.firstName ?? 'Demo',
+        lastName: mock?.lastName ?? 'Owner',
+        username: 'demo',
+        email: mock?.email ?? 'demo@flowinventory.local',
+        role: mock?.role ?? 'OWNER',
+        userId: 'demo-user',
+        provider: 'demo',
+        sessionMode: 'Demo',
+      }
+      return
+    }
+    try {
+      const { data: userData } = await supabase.auth.getUser()
+      const user = userData.user
+      if (!user) {
+        activeCompanyId = ''
+        accountInfo = {
+          firstName: 'Perdorues',
+          lastName: '',
+          username: '',
+          email: '—',
+          role: 'OWNER',
+          userId: '—',
+          provider: 'email',
+          sessionMode: 'Supabase',
+        }
+        return
+      }
+      let role = 'OWNER'
+      let profileUsername = ''
+      try {
+        const profile = await getProfile()
+        if (profile?.role) role = String(profile.role)
+      } catch {
+      }
+      const metadataRole = String(user.user_metadata?.role ?? '').trim().toUpperCase()
+      if (!role && (metadataRole === 'OWNER' || metadataRole === 'MANAGER' || metadataRole === 'WORKER')) {
+        role = metadataRole
+      }
+      const provider = user.app_metadata?.provider ?? user.identities?.[0]?.provider ?? 'email'
+      try {
+        const companyRes = await supabase
+          .from('profiles')
+          .select('company_id,username')
+          .eq('id', user.id)
+          .maybeSingle()
+        if (!companyRes.error && companyRes.data) {
+          activeCompanyId = String((companyRes.data as { company_id?: unknown }).company_id ?? '').trim()
+          profileUsername = String((companyRes.data as { username?: unknown }).username ?? '').trim()
+        }
+      } catch {
+      }
+      const usernameMeta = String(user.user_metadata?.username ?? '').trim()
+      const resolvedUsername = usernameMeta || profileUsername || ''
+      const fallbackName = resolvedUsername || 'Perdorues'
+      accountInfo = {
+        firstName: String(user.user_metadata?.first_name ?? fallbackName),
+        lastName: String(user.user_metadata?.last_name ?? ''),
+        username: resolvedUsername,
+        email: String(user.email ?? '').trim() || '—',
+        role: role || 'OWNER',
+        userId: String(user.id ?? '').trim() || '—',
+        provider: String(provider),
+        sessionMode: 'Supabase',
+      }
+    } catch {
+      activeCompanyId = ''
+      accountInfo = {
+        firstName: 'Perdorues',
+        lastName: '',
+        username: '',
+        email: '—',
+        role: 'OWNER',
+        userId: '—',
+        provider: 'email',
+        sessionMode: 'Supabase',
+      }
+    }
+  }
+/*
+      return [
+          id: String(user.id ?? ''),
+          email: String(user.email ?? '').trim() || '—',
     if (!canSeeSettings) return []
     if (!isSupabaseConfigured) {
       return buildCurrentUserFallback()
@@ -657,6 +893,7 @@ export function renderPronari(
     }
   }
 
+*/
   function showToast(message: string): void {
     const existing = document.getElementById('owner-toast')
     if (existing) existing.remove()
@@ -668,6 +905,11 @@ export function renderPronari(
     document.body.appendChild(toast)
     window.setTimeout(() => toast.remove(), 1800)
   }
+
+  const getSafeUsername = (value: string): string => String(value ?? '').trim() || 'perdorues'
+  const getVisibleUserName = (value: string): string => String(value ?? '').trim() || 'Përdorues'
+  const getVisibleLoginLabel = (value: string): string =>
+    String(value ?? '').trim() ? `Username: ${String(value ?? '').trim()}` : 'Username i paplotësuar'
 
   function normalizeHeader(value: string): string {
     return value
@@ -1154,6 +1396,119 @@ export function renderPronari(
     })
   }
 
+  function openUserEditModal(initial: {
+    username: string
+    role: 'OWNER' | 'MANAGER' | 'WORKER'
+    isActive: boolean
+    label: string
+  }): Promise<{
+    username: string
+    role: 'OWNER' | 'MANAGER' | 'WORKER'
+    isActive: boolean
+    password: string
+  } | null> {
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div')
+      overlay.className = 'fixed inset-0 z-[70] bg-slate-900/18 flex items-center justify-center p-4'
+      overlay.innerHTML = `
+        <div class="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+          <h3 class="text-lg font-semibold text-slate-900 mb-1">Edito përdoruesin</h3>
+          <p class="text-sm text-slate-500 mb-4">Ndrysho aksesin dhe kredencialet për <strong>${initial.label}</strong>.</p>
+          <div class="grid gap-3 md:grid-cols-2">
+            <label class="text-sm text-slate-700">
+              Username
+              <input id="owner-edit-user-username" type="text" class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </label>
+            <label class="text-sm text-slate-700">
+              Roli
+              <select id="owner-edit-user-role" class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="OWNER">ADMIN</option>
+                <option value="MANAGER">MANAGER</option>
+                <option value="WORKER">WORKER</option>
+              </select>
+            </label>
+            <label class="text-sm text-slate-700">
+              Fjalëkalim i ri
+              <input id="owner-edit-user-password" type="password" placeholder="Lëre bosh nëse nuk do ndryshim" class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </label>
+            <label class="text-sm text-slate-700">
+              Konfirmo fjalëkalimin
+              <input id="owner-edit-user-password-confirm" type="password" placeholder="Përsërite fjalëkalimin e ri" class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </label>
+          </div>
+          <label class="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+            <input id="owner-edit-user-active" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-blue-500" />
+            Përdorues aktiv
+          </label>
+          <p class="mt-2 text-xs text-slate-500">Nëse password-i lihet bosh, ruhet password-i aktual.</p>
+          <p id="owner-edit-user-error" class="mt-2 text-xs text-red-600"></p>
+          <div class="mt-4 flex items-center justify-end gap-2">
+            <button type="button" id="owner-edit-user-cancel" class="premium-btn-ghost rounded-xl px-4 py-2 text-sm font-medium">Anulo</button>
+            <button type="button" id="owner-edit-user-save" class="premium-btn-primary rounded-xl px-4 py-2 text-sm font-semibold">Ruaj ndryshimet</button>
+          </div>
+        </div>
+      `
+      document.body.appendChild(overlay)
+
+      const usernameInput = overlay.querySelector<HTMLInputElement>('#owner-edit-user-username')
+      const roleInput = overlay.querySelector<HTMLSelectElement>('#owner-edit-user-role')
+      const passwordInput = overlay.querySelector<HTMLInputElement>('#owner-edit-user-password')
+      const passwordConfirmInput = overlay.querySelector<HTMLInputElement>('#owner-edit-user-password-confirm')
+      const activeInput = overlay.querySelector<HTMLInputElement>('#owner-edit-user-active')
+      const errorEl = overlay.querySelector<HTMLParagraphElement>('#owner-edit-user-error')
+      const cancelBtn = overlay.querySelector<HTMLButtonElement>('#owner-edit-user-cancel')
+      const saveBtn = overlay.querySelector<HTMLButtonElement>('#owner-edit-user-save')
+
+      if (usernameInput) usernameInput.value = initial.username
+      if (roleInput) roleInput.value = initial.role
+      if (activeInput) activeInput.checked = initial.isActive
+      usernameInput?.focus()
+
+      const close = (
+        value: { username: string; role: 'OWNER' | 'MANAGER' | 'WORKER'; isActive: boolean; password: string } | null
+      ) => {
+        overlay.remove()
+        resolve(value)
+      }
+
+      cancelBtn?.addEventListener('click', () => close(null))
+      saveBtn?.addEventListener('click', () => {
+        const username = (usernameInput?.value ?? '').trim().toLocaleLowerCase('sq-AL')
+        const roleRaw = String(roleInput?.value ?? 'WORKER').toUpperCase()
+        const role = roleRaw === 'OWNER' ? 'OWNER' : roleRaw === 'MANAGER' ? 'MANAGER' : 'WORKER'
+        const password = String(passwordInput?.value ?? '')
+        const passwordConfirm = String(passwordConfirmInput?.value ?? '')
+        const isActive = Boolean(activeInput?.checked)
+
+        if (username.length < 3 || username.length > 32) {
+          if (errorEl) errorEl.textContent = 'Username duhet të ketë 3-32 karaktere.'
+          usernameInput?.focus()
+          return
+        }
+        if (!/^[a-z0-9._-]+$/.test(username)) {
+          if (errorEl) errorEl.textContent = 'Username lejon vetëm a-z, 0-9, ., _, -.'
+          usernameInput?.focus()
+          return
+        }
+        if (password && password.length < 6) {
+          if (errorEl) errorEl.textContent = 'Fjalëkalimi duhet të ketë të paktën 6 karaktere.'
+          passwordInput?.focus()
+          return
+        }
+        if (password && password !== passwordConfirm) {
+          if (errorEl) errorEl.textContent = 'Konfirmimi i fjalëkalimit nuk përputhet.'
+          passwordConfirmInput?.focus()
+          return
+        }
+
+        close({ username, role, isActive, password })
+      })
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) close(null)
+      })
+    })
+  }
+
   function openConfirmModal(title: string, description: string): Promise<boolean> {
     return new Promise((resolve) => {
       const overlay = document.createElement('div')
@@ -1253,6 +1608,16 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     return 'JPEG'
   }
 
+  function splitPdfText(doc: jsPDF, text: string, width: number, maxLines = 3): string[] {
+    const normalized = String(text ?? '').trim()
+    if (!normalized) return []
+    const lines = doc.splitTextToSize(normalized, width) as string[]
+    if (lines.length <= maxLines) return lines
+    const visible = lines.slice(0, maxLines)
+    visible[maxLines - 1] = `${visible[maxLines - 1].replace(/[.\s]+$/g, '')}...`
+    return visible
+  }
+
   async function downloadOrderPdf(order: OwnerOrder): Promise<void> {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' })
     const pageWidth = doc.internal.pageSize.getWidth()
@@ -1266,8 +1631,10 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     const totalQty = parsedItems.reduce((sum, row) => sum + row.qty, 0)
     const brand = getCompanyBrand(companyDetails)
     const companyName = brand.name
+    const companyPosName = companyDetails.posName.trim()
     const companyLine = [companyDetails.address.trim(), companyDetails.phone.trim()].filter(Boolean).join(' | ')
     const companyEmail = companyDetails.email.trim()
+    const companyOtherInfo = companyDetails.otherInfo.trim()
     const logoData = (await loadImageAsDataUrl(brand.logoUrl)) ?? (await loadImageAsDataUrl(DEFAULT_BRAND_LOGO))
     const logoFormat = logoData ? getJsPdfImageFormat(logoData) : null
 
@@ -1301,10 +1668,22 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     const boxW = (cardWidth - 14 - boxGap) / 2
     const leftX = cardX + 5
     const rightX = leftX + boxW + boxGap
+    const businessTextWidth = boxW - 5
+    const businessLines = [
+      companyName,
+      ...(companyPosName && companyPosName !== companyName
+        ? splitPdfText(doc, `POS: ${companyPosName}`, businessTextWidth, 2)
+        : []),
+      ...splitPdfText(doc, companyLine, businessTextWidth, 2),
+      ...splitPdfText(doc, companyEmail, businessTextWidth, 2),
+      ...splitPdfText(doc, `Info shtesë: ${companyOtherInfo}`, businessTextWidth, 3),
+    ]
+    const businessLineGap = 4
+    const boxHeight = Math.max(24, 14 + businessLines.length * businessLineGap)
     doc.setDrawColor(222, 230, 239)
     doc.setFillColor(248, 250, 252)
-    doc.roundedRect(leftX, boxY, boxW, 24, 1.2, 1.2, 'FD')
-    doc.roundedRect(rightX, boxY, boxW, 24, 1.2, 1.2, 'FD')
+    doc.roundedRect(leftX, boxY, boxW, boxHeight, 1.2, 1.2, 'FD')
+    doc.roundedRect(rightX, boxY, boxW, boxHeight, 1.2, 1.2, 'FD')
 
     doc.setTextColor(71, 85, 105)
     doc.setFont('helvetica', 'bold')
@@ -1315,11 +1694,11 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(7.2)
     doc.setTextColor(17, 24, 39)
-    doc.text(companyName, leftX + 2.5, boxY + 10)
-    if (companyLine) doc.text(doc.splitTextToSize(companyLine, boxW - 5), leftX + 2.5, boxY + 14)
-    if (companyEmail) doc.text(doc.splitTextToSize(companyEmail, boxW - 5), leftX + 2.5, boxY + 18)
+    businessLines.forEach((line, index) => {
+      doc.text(line, leftX + 2.5, boxY + 10 + index * businessLineGap)
+    })
     doc.setTextColor(100, 116, 139)
-    doc.text(`Krijuar: ${generatedAt}`, leftX + 2.5, boxY + 22)
+    doc.text(`Krijuar: ${generatedAt}`, leftX + 2.5, boxY + 10 + businessLines.length * businessLineGap)
 
     doc.setTextColor(51, 65, 85)
     doc.setFont('helvetica', 'bold')
@@ -1332,7 +1711,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     doc.text(String(parsedItems.length), rightX + boxW - 2.5, boxY + 14, { align: 'right' })
     doc.text(String(totalQty), rightX + boxW - 2.5, boxY + 18, { align: 'right' })
 
-    const titleY = boxY + 29
+    const titleY = boxY + boxHeight + 5
     doc.setDrawColor(223, 231, 241)
     doc.setFillColor(243, 246, 252)
     doc.roundedRect(cardX + 5, titleY, cardWidth - 10, 8, 1, 1, 'FD')
@@ -1799,10 +2178,6 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
               <input id="owner-profile-username" type="text" value="${accountInfo.username || ''}" placeholder="username" class="premium-input mt-1 w-full rounded-lg px-2.5 py-1.5 text-xs focus:outline-none" />
             </label>
             <label class="text-xs text-slate-700">
-              Email
-              <input id="owner-profile-email-input" type="text" value="${accountInfo.email === '—' ? '' : accountInfo.email}" placeholder="email@domain.com" class="premium-input mt-1 w-full rounded-lg px-2.5 py-1.5 text-xs focus:outline-none" />
-            </label>
-            <label class="text-xs text-slate-700">
               Roli
               <select id="owner-profile-role-input" class="premium-input mt-1 w-full rounded-lg px-2.5 py-1.5 text-xs focus:outline-none">
                 <option value="OWNER" ${roleValue === 'OWNER' ? 'selected' : ''}>ADMIN</option>
@@ -1819,6 +2194,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
               <input id="owner-profile-confirm-password" type="password" placeholder="Përsërite fjalëkalimin" class="premium-input mt-1 w-full rounded-lg px-2.5 py-1.5 text-xs focus:outline-none" />
             </label>
           </div>
+          <p class="text-[11px] text-slate-500">Ky panel përdor username për login. Email-i teknik menaxhohet nga sistemi.</p>
           <div class="flex flex-wrap items-center justify-between gap-2">
             <button type="submit" class="premium-btn-primary rounded-lg px-3 py-1.5 text-xs font-semibold">Ruaj ndryshimet</button>
           </div>
@@ -1838,7 +2214,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     }
     const managedUsers = mergeTeamUsers(teamUsers, readPendingSettingsUsers())
       .slice()
-      .sort((a, b) => compareAlbanian(a.username || a.email, b.username || b.email))
+      .sort((a, b) => compareAlbanian(getVisibleUserName(a.username), getVisibleUserName(b.username)))
     const displayUsers =
       managedUsers.length > 0
         ? managedUsers
@@ -1846,10 +2222,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             {
               id: accountInfo.userId || 'current-admin',
               email: accountInfo.email || '—',
-              username:
-                [accountInfo.firstName, accountInfo.lastName].filter(Boolean).join(' ').trim() ||
-                accountInfo.email?.split('@')[0] ||
-                'admin',
+              username: accountInfo.username || 'admin',
               role: accountInfo.role || 'OWNER',
               isActive: true,
               createdAt: '',
@@ -1891,48 +2264,27 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             : role === 'MANAGER'
               ? 'bg-blue-100 text-blue-800 border-blue-200'
               : 'bg-slate-100 text-slate-700 border-slate-200'
-        const initials = (u.username || u.email || 'U').slice(0, 1).toUpperCase()
+        const visibleUsername = getVisibleUserName(u.username)
+        const initials = visibleUsername.slice(0, 1).toUpperCase()
         return `
           <tr data-settings-row="${rowId}" class="border-t border-slate-200/80 text-[11px] transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'} hover:bg-violet-50/60">
             <td class="px-3 py-2.5 text-slate-800">
               <div class="flex items-center gap-2.5">
                 <span class="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-[10px] font-semibold text-white">${initials}</span>
                 <div class="min-w-0 flex-1">
-                  <p class="truncate text-[11px] font-semibold text-slate-900">${u.username || 'Përdorues'}</p>
-                  <p class="truncate text-[10px] text-slate-500">${u.email || '—'}</p>
+                  <p class="truncate text-[11px] font-semibold text-slate-900">${visibleUsername}</p>
+                  <p class="truncate text-[10px] text-slate-500">${getVisibleLoginLabel(u.username)}</p>
                 </div>
               </div>
               <div class="mt-2 flex flex-wrap items-center gap-2">
-                <input
-                  id="${usernameInputId}"
-                  type="text"
-                  value="${u.username || ''}"
-                  placeholder="Shkruaj username..."
-                  data-edit-target="1"
-                  class="premium-input min-w-36 flex-1 rounded-xl border-slate-300 bg-white px-2.5 py-1.5 text-[11px] shadow-sm focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
-                  ${canManage ? 'disabled' : 'disabled'}
-                />
+                <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-medium text-slate-600">Modal edit</span>
               </div>
             </td>
             <td class="px-3 py-2.5 align-top">
               <div class="flex flex-wrap items-center gap-2">
                 <span class="inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold ${roleBadgeClass}">${role === 'OWNER' ? 'ADMIN' : role}</span>
-                <select
-                  id="${roleInputId}"
-                  data-edit-target="1"
-                  class="premium-input rounded-xl border-slate-300 bg-white px-2.5 py-1.5 text-[11px] shadow-sm transition hover:border-indigo-300 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
-                  ${canManage ? 'disabled' : 'disabled'}
-                >
-                  <option value="OWNER" ${role === 'OWNER' ? 'selected' : ''}>ADMIN</option>
-                  <option value="MANAGER" ${role === 'MANAGER' ? 'selected' : ''}>MANAGER</option>
-                  <option value="WORKER" ${role === 'WORKER' ? 'selected' : ''}>WORKER</option>
-                </select>
               </div>
               <div class="mt-2 inline-flex items-center gap-2">
-                <label class="inline-flex items-center gap-1 text-[11px] text-slate-600">
-                  <input id="${activeInputId}" type="checkbox" data-edit-target="1" class="h-3.5 w-3.5" ${u.isActive ? 'checked' : ''} ${canManage ? 'disabled' : 'disabled'} />
-                  Aktiv
-                </label>
                 <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${u.isActive ? 'border border-emerald-300 bg-emerald-100 text-emerald-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]' : 'border border-slate-300 bg-slate-100 text-slate-600'}">${u.isActive ? 'Aktiv' : 'Joaktiv'}</span>
               </div>
             </td>
@@ -1948,9 +2300,10 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                         id="${editBtnId}"
                         data-action="edit-user-row"
                         data-user-id="${u.id}"
-                        data-row-id="${rowId}"
-                        data-save-btn-id="${saveBtnId}"
-                        data-cancel-btn-id="${cancelBtnId}"
+                        data-username="${u.username || ''}"
+                        data-role="${role}"
+                        data-active="${u.isActive ? '1' : '0'}"
+                        data-label="${visibleUsername}"
                         class="rounded-full border border-slate-300 bg-white px-3 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50"
                       >
                         <span class="inline-flex items-center gap-1">
@@ -1959,34 +2312,6 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                           </svg>
                           Edito
                         </span>
-                      </button>
-                      <button
-                        id="${saveBtnId}"
-                        data-action="save-user-row"
-                        data-user-id="${u.id}"
-                        data-username-input-id="${usernameInputId}"
-                        data-role-select-id="${roleInputId}"
-                        data-active-input-id="${activeInputId}"
-                        disabled
-                        class="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-[10px] font-semibold text-indigo-700 hover:bg-indigo-100 disabled:pointer-events-none disabled:opacity-50"
-                      >
-                        <span class="inline-flex items-center gap-1">
-                          <svg viewBox="0 0 20 20" fill="none" class="h-3.5 w-3.5" aria-hidden="true">
-                            <path d="M4.5 3.5h9l2 2v11h-11v-13Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-                            <path d="M7 3.5v4h6v-4M7 16.5v-4.5h6v4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-                          </svg>
-                          Ruaj
-                        </span>
-                      </button>
-                      <button
-                        id="${cancelBtnId}"
-                        data-action="cancel-user-row"
-                        data-row-id="${rowId}"
-                        data-edit-btn-id="${editBtnId}"
-                        disabled
-                        class="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-200 disabled:pointer-events-none disabled:opacity-50"
-                      >
-                        Anulo
                       </button>
                       <button data-action="delete-user" data-user-id="${u.id}" class="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[10px] font-semibold text-rose-700 hover:bg-rose-100">
                         <span class="inline-flex items-center gap-1">
@@ -2094,7 +2419,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
         <div class="mb-3 flex items-center justify-between gap-2">
           <div>
             <h3 class="text-sm font-semibold text-slate-900">Lista e përdoruesve</h3>
-            <p class="text-[11px] text-slate-500">Kliko "Edito" për të hapur fushat, pastaj "Ruaj" ose "Anulo".</p>
+            <p class="text-[11px] text-slate-500">Kliko "Edito" për të hapur modalin dhe për të ndryshuar username, password, rolin dhe statusin aktiv.</p>
           </div>
           <span class="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] text-slate-600">${displayUsers.length} përdorues</span>
         </div>
@@ -2138,7 +2463,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
           </label>
           <label class="text-xs text-slate-700">
             Email
-            <input id="owner-company-email" type="email" value="${companyDetails.email || accountInfo.email || ''}" class="premium-input mt-1 w-full rounded-lg px-2.5 py-1.5 text-xs focus:outline-none" />
+            <input id="owner-company-email" type="email" value="${companyDetails.email || ''}" class="premium-input mt-1 w-full rounded-lg px-2.5 py-1.5 text-xs focus:outline-none" />
           </label>
           <label class="text-xs text-slate-700 sm:col-span-2">
             Adresa
@@ -2176,11 +2501,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             {
               id: accountInfo.userId || 'current-admin',
               email: accountInfo.email || '—',
-              username:
-                [accountInfo.firstName, accountInfo.lastName].filter(Boolean).join(' ').trim() ||
-                accountInfo.username ||
-                accountInfo.email?.split('@')[0] ||
-                'admin',
+              username: accountInfo.username || 'admin',
               role: accountInfo.role || 'OWNER',
               isActive: true,
               createdAt: '',
@@ -2208,8 +2529,8 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
           <article class="rounded-xl border border-slate-200 bg-white p-3">
             <div class="mb-2 flex items-start justify-between gap-2">
               <div class="min-w-0">
-                <p class="truncate text-sm font-semibold text-slate-900">${u.username || (u.email ? String(u.email).split('@')[0] : 'Përdorues')}</p>
-                <p class="truncate text-[11px] text-slate-500">${u.email || '—'}</p>
+                <p class="truncate text-sm font-semibold text-slate-900">${getVisibleUserName(u.username)}</p>
+                <p class="truncate text-[11px] text-slate-500">${getVisibleLoginLabel(u.username)}</p>
               </div>
               <span class="rounded-full px-2 py-0.5 text-[10px] font-semibold ${u.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}">${u.isActive ? 'Aktiv' : 'Joaktiv'}</span>
             </div>
@@ -2258,7 +2579,6 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       const firstNameInput = document.getElementById('owner-profile-first-name') as HTMLInputElement | null
       const lastNameInput = document.getElementById('owner-profile-last-name') as HTMLInputElement | null
       const usernameInput = document.getElementById('owner-profile-username') as HTMLInputElement | null
-      const emailInput = document.getElementById('owner-profile-email-input') as HTMLInputElement | null
       const roleInput = document.getElementById('owner-profile-role-input') as HTMLSelectElement | null
       const newPasswordInput = document.getElementById('owner-profile-new-password') as HTMLInputElement | null
       const confirmPasswordInput = document.getElementById('owner-profile-confirm-password') as HTMLInputElement | null
@@ -2266,8 +2586,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
 
       const firstName = String(firstNameInput?.value ?? '').trim()
       const lastName = String(lastNameInput?.value ?? '').trim()
-      const username = String(usernameInput?.value ?? '').trim()
-      const email = String(emailInput?.value ?? '').trim().toLowerCase()
+      const username = String(usernameInput?.value ?? '').trim().toLocaleLowerCase('sq-AL')
       const role =
         roleInput?.value === 'MANAGER' || roleInput?.value === 'WORKER' ? roleInput.value : 'OWNER'
       const newPassword = String(newPasswordInput?.value ?? '')
@@ -2276,11 +2595,6 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       if (!username || !/^[a-z0-9._-]{3,32}$/i.test(username)) {
         showToast('Username: 3-32 karaktere (a-z, 0-9, ., _, -).')
         usernameInput?.focus()
-        return
-      }
-      if (email && !email.includes('@')) {
-        showToast('Email nuk është valid.')
-        emailInput?.focus()
         return
       }
       if (newPassword) {
@@ -2299,14 +2613,13 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       if (saveBtn) saveBtn.disabled = true
       try {
         if (isSupabaseConfigured) {
-          const updatePayload: { email?: string; data: Record<string, string> } = {
+          const updatePayload: { data: Record<string, string> } = {
             data: {
               first_name: firstName,
               last_name: lastName,
               username,
             },
           }
-          if (email && email !== accountInfo.email) updatePayload.email = email
           const baseUpdate = await supabase.auth.updateUser(updatePayload)
           if (baseUpdate.error) throw new Error(baseUpdate.error.message)
 
@@ -2332,7 +2645,6 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
           firstName,
           lastName,
           username,
-          email: email || accountInfo.email,
           role,
         }
         if (newPasswordInput) newPasswordInput.value = ''
@@ -2557,14 +2869,15 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     const sidebarBrandLogo = document.getElementById('owner-sidebar-brand-logo') as HTMLImageElement | null
     const reopenBrandLogo = document.getElementById('owner-logo-reopen-img') as HTMLImageElement | null
     const brand = getCompanyBrand(companyDetails)
-    const displayName = `${accountInfo.firstName} ${accountInfo.lastName}`.trim()
-    if (sidebarAvatar) sidebarAvatar.textContent = (accountInfo.firstName || 'O').slice(0, 1).toUpperCase()
-    if (menuAvatar) menuAvatar.textContent = (accountInfo.firstName || 'O').slice(0, 1).toUpperCase()
+    const displayName = `${accountInfo.firstName} ${accountInfo.lastName}`.trim() || getVisibleUserName(accountInfo.username)
+    const avatarLetter = displayName.slice(0, 1).toUpperCase() || 'O'
+    if (sidebarAvatar) sidebarAvatar.textContent = avatarLetter
+    if (menuAvatar) menuAvatar.textContent = avatarLetter
     if (menuName) menuName.textContent = displayName || 'Përdorues'
     if (menuRole) menuRole.textContent = accountInfo.role || '...'
     if (menuTriggerName) menuTriggerName.textContent = displayName || 'Përdorues'
     if (menuTriggerRole) menuTriggerRole.textContent = accountInfo.role || '...'
-    if (menuEmail) menuEmail.textContent = accountInfo.email || '—'
+    if (menuEmail) menuEmail.textContent = getVisibleLoginLabel(accountInfo.username)
     if (sidebarName) sidebarName.textContent = displayName || 'Përdorues'
     if (sidebarRole) sidebarRole.textContent = accountInfo.role || '...'
     if (sidebarBrandName) sidebarBrandName.textContent = brand.name
@@ -2732,7 +3045,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                     <div class="px-2.5 py-2 border-b border-slate-200">
                       <p id="owner-menu-name" class="truncate text-xs font-semibold text-slate-900">Përdorues</p>
                       <p id="owner-menu-role" class="text-[11px] text-slate-500">...</p>
-                      <p id="owner-menu-email" class="truncate text-[11px] text-slate-500">—</p>
+                      <p id="owner-menu-email" class="truncate text-[11px] text-slate-500">Username: —</p>
                     </div>
                     <button type="button" id="owner-account-profile" class="w-full text-left rounded-lg px-2.5 py-2 text-xs text-slate-700 hover:bg-slate-100">
                       Profile
@@ -3482,25 +3795,96 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
         showToast('Vetëm OWNER mund të menaxhojë përdoruesit.')
         return
       }
-      const rowId = btn.dataset.rowId?.trim()
-      const saveBtnId = btn.dataset.saveBtnId?.trim()
-      const cancelBtnId = btn.dataset.cancelBtnId?.trim()
-      if (!rowId) return
-      const row = document.querySelector<HTMLElement>(`[data-settings-row="${rowId}"]`)
-      if (!row) return
-      row.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-edit-target="1"]').forEach((el) => {
-        el.disabled = false
+      const currentUsername = (btn.dataset.username ?? '').trim().toLocaleLowerCase('sq-AL')
+      const currentRole =
+        btn.dataset.role === 'OWNER' ? 'OWNER' : btn.dataset.role === 'MANAGER' ? 'MANAGER' : 'WORKER'
+      const currentActive = btn.dataset.active === '1'
+      const currentLabel = (btn.dataset.label ?? '').trim() || getVisibleUserName(currentUsername)
+      const edited = await openUserEditModal({
+        username: currentUsername,
+        role: currentRole,
+        isActive: currentActive,
+        label: currentLabel,
       })
-      if (saveBtnId) {
-        const saveBtn = document.getElementById(saveBtnId) as HTMLButtonElement | null
-        if (saveBtn) saveBtn.disabled = false
+      if (!edited) return
+
+      const hasUsernameChange = edited.username !== currentUsername
+      const hasRoleChange = edited.role !== currentRole
+      const hasActiveChange = edited.isActive !== currentActive
+      const hasPasswordChange = Boolean(edited.password)
+
+      if (!hasUsernameChange && !hasRoleChange && !hasActiveChange && !hasPasswordChange) {
+        showToast('Nuk ka ndryshime për ta ruajtur.')
+        return
       }
-      if (cancelBtnId) {
-        const cancelBtn = document.getElementById(cancelBtnId) as HTMLButtonElement | null
-        if (cancelBtn) cancelBtn.disabled = false
+
+      let targetUserId = userId
+      if (!isUuid(targetUserId)) {
+        targetUserId = (await resolveRealUserId(currentUsername)) ?? (await resolveRealUserId(edited.username)) ?? ''
       }
-      btn.disabled = true
-      btn.textContent = 'Duke edituar'
+
+      if (!targetUserId) {
+        if (hasPasswordChange) {
+          showToast('Passwordi mund të ndryshohet pasi user-i të sinkronizohet me databazën.')
+          return
+        }
+        teamUsers = teamUsers.map((u) =>
+          u.id === userId ? { ...u, username: edited.username, role: edited.role, isActive: edited.isActive } : u
+        )
+        writePendingSettingsUsers(
+          readPendingSettingsUsers().map((u) =>
+            u.id === userId ? { ...u, username: edited.username, role: edited.role, isActive: edited.isActive } : u
+          )
+        )
+        refreshUI()
+        showToast('Rreshti pending u përditësua lokalisht.')
+        return
+      }
+
+      let savedBaseProfile = false
+      if (hasUsernameChange) {
+        const usernameRes = await adminUpdateUsername(targetUserId, edited.username)
+        if (!usernameRes.ok) {
+          showToast(usernameRes.message)
+          return
+        }
+        savedBaseProfile = true
+      }
+      if (hasRoleChange) {
+        const roleRes = await adminUpdateUserRole(targetUserId, edited.role)
+        if (!roleRes.ok) {
+          showToast(roleRes.message)
+          return
+        }
+        savedBaseProfile = true
+      }
+      if (hasActiveChange) {
+        const activeRes = await adminSetUserActive(targetUserId, edited.isActive)
+        if (!activeRes.ok) {
+          showToast(activeRes.message)
+          return
+        }
+        savedBaseProfile = true
+      }
+      if (hasPasswordChange) {
+        const passwordRes = await adminUpdateUserPassword(targetUserId, edited.password)
+        if (!passwordRes.ok) {
+          if (savedBaseProfile) {
+            teamUsers = await loadTeamUsers()
+            refreshUI()
+            showToast(`Username/roli/statusi u ruajt, por passwordi jo: ${passwordRes.message}`)
+            return
+          }
+          showToast(passwordRes.message)
+          return
+        }
+      }
+
+      teamUsers = await loadTeamUsers()
+      refreshUI()
+      showToast(
+        hasPasswordChange ? 'Përdoruesi u përditësua dhe passwordi u ruajt.' : 'Përdoruesi u përditësua.'
+      )
       return
     }
 

@@ -5,10 +5,11 @@ import {
   completePasswordRecovery,
   clearPasswordRecoveryPending,
   isPasswordRecoveryPending,
+  takeAuthNotice,
 } from '../lib/auth.js'
 
 const AUTH_SWITCH_KEY = 'flowinventory-auth-switch-intent'
-const REMEMBER_EMAIL_KEY = 'flowinventory_remember_email'
+const REMEMBER_USERNAME_KEY = 'flowinventory_remember_username'
 const RESET_SUCCESS_KEY = 'flowinventory_password_reset_success'
 const iconEye = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3" stroke-width="2"/></svg>`
 const iconEyeOff = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3l18 18"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.58 10.58A2 2 0 0012 14a2 2 0 001.42-.58"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.88 5.09A10.94 10.94 0 0112 5c6.5 0 10 7 10 7a19.17 19.17 0 01-4.07 5.06"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6.61 6.62A19.03 19.03 0 002 12s3.5 7 10 7a10.9 10.9 0 005.23-1.32"/></svg>`
@@ -76,10 +77,10 @@ export function renderLogin(container: HTMLElement): void {
               `
                   : `
               <div class="auth-field">
-                <label for="email" class="auth-label">Username</label>
+                <label for="username" class="auth-label">Username</label>
                 <div class="auth-input-with-icon">
                   <span class="auth-input-icon" aria-hidden="true">${iconMail}</span>
-                  <input type="text" id="email" name="email" required placeholder="Shkruaj username" autocomplete="username" class="auth-input auth-input-has-icon" />
+                  <input type="text" id="username" name="username" required placeholder="Shkruaj username" autocomplete="username" class="auth-input auth-input-has-icon" />
                 </div>
               </div>
               <div class="auth-field">
@@ -117,12 +118,13 @@ export function renderLogin(container: HTMLElement): void {
   const form = document.getElementById('login-form') as HTMLFormElement
   const errorEl = document.getElementById('login-error')!
   const btn = document.getElementById('login-btn') as HTMLButtonElement
-  const emailInput = document.getElementById('email') as HTMLInputElement | null
+  const usernameInput = document.getElementById('username') as HTMLInputElement | null
   const passwordInput = document.getElementById('password') as HTMLInputElement | null
   const passwordConfirmInput = document.getElementById('password-confirm') as HTMLInputElement | null
   const togglePasswordBtn = document.getElementById('toggle-login-password') as HTMLButtonElement | null
   const rememberMe = document.getElementById('remember-me') as HTMLInputElement | null
   const shell = document.getElementById('auth-shell')
+  const authNotice = takeAuthNotice()
 
   const clearInputError = (...inputs: Array<HTMLInputElement | null>): void => {
     inputs.forEach((input) => input?.classList.remove('auth-input-error'))
@@ -151,9 +153,9 @@ export function renderLogin(container: HTMLElement): void {
 
   if (!recoveryMode) {
     try {
-      const remembered = localStorage.getItem(REMEMBER_EMAIL_KEY)
-      if (remembered && emailInput) {
-        emailInput.value = remembered
+      const remembered = localStorage.getItem(REMEMBER_USERNAME_KEY)
+      if (remembered && usernameInput) {
+        usernameInput.value = remembered
         if (rememberMe) rememberMe.checked = true
       }
     } catch {
@@ -180,20 +182,20 @@ export function renderLogin(container: HTMLElement): void {
     e.preventDefault()
     errorEl.textContent = ''
     errorEl.classList.remove('auth-error-success')
-    const emailEl = form.querySelector('[name="email"]') as HTMLInputElement | null
+    const usernameEl = form.querySelector('[name="username"]') as HTMLInputElement | null
     const passwordEl = form.querySelector('[name="password"]') as HTMLInputElement | null
     const passwordConfirmEl = form.querySelector('[name="passwordConfirm"]') as HTMLInputElement | null
-    const email = (emailEl?.value ?? '').trim()
+    const username = (usernameEl?.value ?? '').trim()
     const password = passwordEl?.value ?? ''
     const passwordConfirm = passwordConfirmEl?.value ?? ''
-    clearInputError(emailEl, passwordEl, passwordConfirmEl)
-    if (!recoveryMode && !email) {
-      markInputError(emailEl)
+    clearInputError(usernameEl, passwordEl, passwordConfirmEl)
+    if (!recoveryMode && !username) {
+      markInputError(usernameEl)
       setError('Shkruaj username.')
       return
     }
-    if (!recoveryMode && !/^[a-z0-9._\-]{3,32}$/i.test(email)) {
-      markInputError(emailEl)
+    if (!recoveryMode && !/^[a-z0-9._\-]{3,32}$/i.test(username)) {
+      markInputError(usernameEl)
       setError('Username duhet të ketë 3-32 karaktere dhe vetëm a-z, 0-9, ., _, -.')
       return
     }
@@ -224,14 +226,14 @@ export function renderLogin(container: HTMLElement): void {
         return
       }
       try {
-        if (rememberMe?.checked) localStorage.setItem(REMEMBER_EMAIL_KEY, email)
-        else localStorage.removeItem(REMEMBER_EMAIL_KEY)
+        if (rememberMe?.checked) localStorage.setItem(REMEMBER_USERNAME_KEY, username)
+        else localStorage.removeItem(REMEMBER_USERNAME_KEY)
       } catch {
       }
-      const profile = await signIn(email, password)
+      const profile = await signIn(username, password)
       redirectByRole(profile.role)
     } catch (err) {
-      markInputError(recoveryMode ? passwordEl : emailEl, passwordEl, passwordConfirmEl)
+      markInputError(recoveryMode ? passwordEl : usernameEl, passwordEl, passwordConfirmEl)
       setError(recoveryMode ? (err instanceof Error ? err.message : 'Ruajtja e fjalëkalimit dështoi.') : mapLoginError(err))
       btn.disabled = false
       btn.textContent = originalBtnLabel
@@ -239,8 +241,8 @@ export function renderLogin(container: HTMLElement): void {
     }
   })
 
-  emailInput?.addEventListener('input', () => {
-    clearInputError(emailInput)
+  usernameInput?.addEventListener('input', () => {
+    clearInputError(usernameInput)
     errorEl.classList.remove('auth-error-success')
   })
   passwordInput?.addEventListener('input', () => {
@@ -260,6 +262,11 @@ export function renderLogin(container: HTMLElement): void {
         setSuccess('Fjalëkalimi u ndryshua. Tani kyçu me fjalëkalimin e ri.')
       }
     } catch {
+    }
+    if (authNotice === 'session-conflict') {
+      setError('Kjo llogari u hap në një pajisje tjetër. Kyçu përsëri vetëm nëse do ta përdorësh këtu.')
+    } else if (authNotice === 'inactive-user') {
+      setError('Ky përdorues është joaktiv. Kontakto administratorin.')
     }
   }
 }

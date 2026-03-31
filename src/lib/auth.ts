@@ -1,9 +1,11 @@
+import type { Session } from '@supabase/supabase-js'
 import { supabase, isSupabaseConfigured } from './supabase.js'
 import type { Profile, UserRole } from '../types.js'
 import { getMockUser, setMockUser } from '../types.js'
 
 const OAUTH_PENDING_ROLE_KEY = 'flowinventory_oauth_pending_role'
 const PASSWORD_RECOVERY_KEY = 'flowinventory_password_recovery_pending'
+const AUTH_NOTICE_KEY = 'flowinventory_auth_notice'
 
 function requireSupabase(): void {
   if (!isSupabaseConfigured) {
@@ -22,6 +24,54 @@ function isLikelyEmail(value: string): boolean {
   return value.includes('@')
 }
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
+function decodeJwtPayload(accessToken: string): Record<string, unknown> | null {
+  try {
+    const [, payload = ''] = accessToken.split('.')
+    if (!payload) return null
+    const normalized = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+    const decoded = atob(padded)
+    return JSON.parse(decoded) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+function getSessionIdFromSession(session: Session | null | undefined): string | null {
+  const accessToken = String(session?.access_token ?? '').trim()
+  if (!accessToken) return null
+  const payload = decodeJwtPayload(accessToken)
+  const sessionId = String(payload?.session_id ?? '').trim()
+  return isUuid(sessionId) ? sessionId : null
+}
+
+async function getCurrentSession(): Promise<Session | null> {
+  const { data, error } = await supabase.auth.getSession()
+  if (error) return null
+  return data.session ?? null
+}
+
+function setAuthNotice(value: 'inactive-user' | 'session-conflict'): void {
+  try {
+    sessionStorage.setItem(AUTH_NOTICE_KEY, value)
+  } catch {
+  }
+}
+
+export function takeAuthNotice(): string {
+  try {
+    const value = sessionStorage.getItem(AUTH_NOTICE_KEY) ?? ''
+    sessionStorage.removeItem(AUTH_NOTICE_KEY)
+    return value
+  } catch {
+    return ''
+  }
+}
+
 function isLookupRpcMissing(error: unknown): boolean {
   const code = typeof error === 'object' && error && 'code' in error ? String((error as any).code ?? '') : ''
   const msg = typeof error === 'object' && error && 'message' in error ? String((error as any).message ?? '') : ''
@@ -31,7 +81,7 @@ function isLookupRpcMissing(error: unknown): boolean {
 
 async function resolveLoginEmail(identifier: string): Promise<string> {
   const normalized = identifier.trim().toLocaleLowerCase('sq-AL')
-  if (!normalized) throw new Error('Shkruaj email ose username.')
+  if (!normalized) throw new Error('Shkruaj username.')
   if (isLikelyEmail(normalized)) return normalized
 
   const lookup = await supabase.rpc('lookup_login_email', { p_identifier: normalized })
@@ -48,6 +98,20 @@ async function resolveLoginEmail(identifier: string): Promise<string> {
   }
 
   throw new Error(lookup.error.message || 'Kyçja dështoi.')
+}
+
+function mapSessionLockError(error: unknown): string {
+  const message = typeof error === 'object' && error && 'message' in error ? String((error as any).message ?? '') : ''
+  const lower = message.toLowerCase()
+  if (lower.includes('inactive_user')) return 'Ky përdorues është joaktiv. Kontakto administratorin.'
+  if (lower.includes('profile_not_found')) return 'Profili i përdoruesit mungon.'
+  if (lower.includes('invalid_session_id')) return 'Sesioni i kyçjes nuk u verifikua.'
+  return message || 'Verifikimi i sesionit dështoi.'
+}
+
+async function claimSessionId(sessionId: string): Promise<void> {
+  const claim = await supabase.rpc('claim_active_session', { p_session_id: sessionId })
+  if (claim.error) throw new Error(mapSessionLockError(claim.error))
 }
 
 async function ensureProfileAfterLogin(): Promise<Profile | null> {
@@ -100,7 +164,55 @@ export async function signIn(identifier: string, password: string): Promise<Prof
 
   const profile = await ensureProfileAfterLogin()
   if (!profile) throw new Error('Profili i përdoruesit mungon.')
+  await claimCurrentSessionOwnership()
   return profile
+}
+
+export async function claimCurrentSessionOwnership(): Promise<void> {
+  requireSupabase()
+  const session = await getCurrentSession()
+  if (!session) throw new Error('Sesioni i kyçjes mungon.')
+  const sessionId = getSessionIdFromSession(session)
+  if (!sessionId) throw new Error('Sesioni aktual nuk ka session_id valid.')
+  await claimSessionId(sessionId)
+  const { error } = await supabase.auth.signOut({ scope: 'others' } as any)
+  if (error) throw new Error(error.message || 'Mbyllja e sesioneve të tjera dështoi.')
+}
+
+export async function ensureCurrentSessionIsActive(): Promise<boolean> {
+  if (!isSupabaseConfigured) return true
+  const session = await getCurrentSession()
+  if (!session) return false
+  const sessionId = getSessionIdFromSession(session)
+  if (!sessionId) return true
+
+  const stateRes = await supabase.rpc('get_my_session_state')
+  if (stateRes.error) throw new Error(stateRes.error.message || 'Leximi i sesionit aktiv dështoi.')
+
+  const state =
+    stateRes.data && typeof stateRes.data === 'object'
+      ? (stateRes.data as { is_active?: unknown; active_session_id?: unknown } | null)
+      : null
+
+  if (!state) return true
+
+  if (state.is_active === false) {
+    setAuthNotice('inactive-user')
+    await signOut('local')
+    return false
+  }
+
+  const activeSessionId = String(state.active_session_id ?? '').trim()
+  if (!activeSessionId) {
+    await claimSessionId(sessionId)
+    return true
+  }
+
+  if (activeSessionId === sessionId) return true
+
+  setAuthNotice('session-conflict')
+  await signOut('local')
+  return false
 }
 
 export async function signInWithGoogle(role: UserRole): Promise<void> {
@@ -145,10 +257,22 @@ export async function signUp(
   return { role, emailConfirmationRequired: !data.session }
 }
 
-export async function signOut(): Promise<void> {
-  if (isSupabaseConfigured) await supabase.auth.signOut()
-  setMockUser(null)
-  window.location.hash = '#/kycu'
+export async function signOut(scope: 'global' | 'local' | 'others' = 'local'): Promise<void> {
+  if (isSupabaseConfigured) {
+    const session = await getCurrentSession()
+    const sessionId = getSessionIdFromSession(session)
+    if (scope !== 'others') {
+      try {
+        await supabase.rpc('release_active_session', { p_session_id: sessionId ?? null })
+      } catch {
+      }
+    }
+    await supabase.auth.signOut(scope === 'global' ? undefined : ({ scope } as any))
+  }
+  if (scope !== 'others') {
+    setMockUser(null)
+    window.location.hash = '#/kycu'
+  }
 }
 
 export async function requestPasswordReset(email: string): Promise<void> {

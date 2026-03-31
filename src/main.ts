@@ -4,6 +4,7 @@ import {
   redirectByRole,
   hasSession,
   finalizeOAuthProfileIfNeeded,
+  ensureCurrentSessionIsActive,
   isPasswordRecoveryPending,
   clearPasswordRecoveryPending,
   setPasswordRecoveryPending,
@@ -16,6 +17,7 @@ import { applyStoredTheme, bindThemeToggleButtons } from './lib/theme.js'
 import './style.css'
 
 const app = document.getElementById('app')!
+const SESSION_GUARD_INTERVAL_MS = 30000
 
 async function disableLocalServiceWorkerCache(): Promise<void> {
   const isLocalhost =
@@ -86,6 +88,12 @@ async function render(): Promise<void> {
       clearPasswordRecoveryPending()
     }
     if (!recoveryMode && hasUserSession) {
+      const sessionAllowed = await ensureCurrentSessionIsActive()
+      if (!sessionAllowed) {
+        renderLogin(app)
+        bindThemeToggleButtons(document)
+        return
+      }
       let profile = await getProfile()
       if (!profile) {
         profile = await finalizeOAuthProfileIfNeeded()
@@ -104,6 +112,9 @@ async function render(): Promise<void> {
     window.location.hash = '#/kycu'
     return
   }
+
+  const sessionAllowed = await ensureCurrentSessionIsActive()
+  if (!sessionAllowed) return
 
   const profile = await getProfile()
   if (!profile) {
@@ -166,6 +177,10 @@ disableLocalServiceWorkerCache()
   .catch((err) => console.warn('Local SW cleanup failed:', err))
   .finally(() => {
     window.addEventListener('hashchange', () => renderWithGuard())
+    window.addEventListener('focus', () => renderWithGuard())
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) renderWithGuard()
+    })
     if (isSupabaseConfigured) {
       supabase.auth.onAuthStateChange((event) => {
         if (event === 'PASSWORD_RECOVERY') {
@@ -174,6 +189,9 @@ disableLocalServiceWorkerCache()
         }
         renderWithGuard()
       })
+      window.setInterval(() => {
+        if (!document.hidden) renderWithGuard()
+      }, SESSION_GUARD_INTERVAL_MS)
     }
     renderWithGuard()
   })

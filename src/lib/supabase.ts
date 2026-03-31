@@ -10,7 +10,13 @@ if (!hasSupabase) {
 
 let client: SupabaseClient
 if (hasSupabase) {
-  client = createClient(supabaseUrl, supabaseAnonKey)
+  client = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  })
 } else {
   client = {} as SupabaseClient
 }

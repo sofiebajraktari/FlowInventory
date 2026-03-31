@@ -15,6 +15,7 @@ const iconMenu = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox
 const iconKpiTotal = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg>`
 const iconKpiProducts = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" /></svg>`
 const iconKpiUrgent = `<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4m0 4h.01" /></svg>`
+
 type WorkerSection = 'mungesat'
 
 function renderResults(results: ProductView[]): string {
@@ -24,6 +25,7 @@ function renderResults(results: ProductView[]): string {
       <p class="premium-empty-copy">Kontrollo drejtshkrimin ose provo me emër tjetër.</p>
     </div>`
   }
+
   return `
     <ul class="mt-2 overflow-hidden rounded-xl border border-slate-200 divide-y divide-slate-200 bg-white">
       ${results
@@ -33,7 +35,6 @@ function renderResults(results: ProductView[]): string {
           <button type="button" class="w-full text-left px-3 py-2.5 hover:bg-slate-50 flex items-center justify-between gap-2 select-product transition-colors" data-id="${p.id}">
             <div>
               <div class="text-sm font-medium text-slate-800">${p.name}</div>
-              <div class="text-xs text-slate-500">Furnitori: ${p.supplierName}</div>
             </div>
             <span class="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full border border-slate-300 text-slate-600">
               ${p.category === 'barna' ? 'Barna' : 'Front'}
@@ -53,13 +54,13 @@ function renderMissingList(missingItems: ShortageView[]): string {
       <p class="premium-empty-copy">Gjendja është e stabilizuar për momentin.</p>
     </div>`
   }
+
   return `
     <div class="worker-missing-table-wrap overflow-hidden rounded-xl border border-slate-200 bg-white">
       <table class="min-w-full text-xs">
         <thead class="worker-missing-head ui-table-head bg-slate-100 text-slate-700">
           <tr>
             <th class="px-3 py-2 text-left font-medium">Bari</th>
-            <th class="px-3 py-2 text-left font-medium">Furnitori</th>
             <th class="px-3 py-2 text-left font-medium">Urgjent</th>
             <th class="px-3 py-2 text-left font-medium">Shënim</th>
             <th class="px-3 py-2 text-right font-medium">Shtuar</th>
@@ -71,7 +72,6 @@ function renderMissingList(missingItems: ShortageView[]): string {
               (m) => `
             <tr class="worker-missing-row border-t border-slate-200 hover:bg-slate-50/70 transition-colors">
               <td data-label="Bari" class="worker-missing-product px-3 py-2.5 font-medium text-slate-800">${m.productName}</td>
-              <td data-label="Furnitori" class="worker-missing-supplier px-3 py-2.5 text-slate-600">${m.supplierName}</td>
               <td data-label="Urgjent" class="px-3 py-2.5">
                 ${
                   m.urgent
@@ -96,6 +96,7 @@ export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat
   const section: WorkerSection = 'mungesat'
   const active = (key: WorkerSection): string => (section === key ? 'premium-nav-link active' : 'premium-nav-link')
   let allProducts: ProductView[] = []
+  let currentMatches: ProductView[] = []
 
   function showToast(message: string): void {
     const existing = document.getElementById('worker-toast')
@@ -209,7 +210,6 @@ export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat
             ${renderMissingList([])}
           </div>
         </section>
-
       </main>
     </div>
   `
@@ -297,6 +297,7 @@ export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat
       applyAccountInfo('Përdorues', 'Demo')
       return
     }
+
     try {
       const [{ data: userData }, profile] = await Promise.all([supabase.auth.getUser(), getProfile()])
       const user = userData.user
@@ -318,34 +319,44 @@ export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat
     if (statUrgent) statUrgent.textContent = String(items.filter((x) => x.urgent).length)
   }
 
-  function updateResults() {
+  async function addSelectedProduct(productId: string): Promise<void> {
+    const incomingNote = noteInput.value.trim()
+    const incomingUrgent = urgentToggle.checked
+
+    try {
+      await addMungese(productId, incomingUrgent, incomingNote)
+    } catch {
+      showToast('Shtimi dështoi.')
+      return
+    }
+
+    searchInput.value = ''
+    if (topSearchInput) topSearchInput.value = ''
+    urgentToggle.checked = false
+    noteInput.value = ''
+    currentMatches = []
+    resultsDiv.innerHTML = ''
+    await refreshMissingList()
+    showToast('Mungesa u shtua.')
+  }
+
+  function updateResults(): void {
     const q = searchInput.value.trim()
-    const matches = !q ? [] : rankProductsForWorkerSearch(allProducts, q, 8)
-    resultsDiv.innerHTML = renderResults(matches)
+    if (!q) {
+      currentMatches = []
+      resultsDiv.innerHTML = ''
+      return
+    }
+
+    currentMatches = rankProductsForWorkerSearch(allProducts, q, 8)
+    resultsDiv.innerHTML = renderResults(currentMatches)
 
     const buttons = resultsDiv.querySelectorAll<HTMLButtonElement>('button.select-product')
     buttons.forEach((btn) => {
-      btn.addEventListener('click', async () => {
+      btn.addEventListener('click', () => {
         const id = btn.dataset.id
-        const incomingNote = noteInput.value.trim()
-        const incomingUrgent = urgentToggle.checked
-
         if (!id) return
-        try {
-          await addMungese(id, incomingUrgent, incomingNote)
-        } catch (error) {
-          showToast('Shtimi dështoi.')
-          return
-        }
-
-        searchInput.value = ''
-        if (topSearchInput) topSearchInput.value = ''
-        urgentToggle.checked = false
-        noteInput.value = ''
-        resultsDiv.innerHTML = ''
-        await refreshMissingList()
-
-        showToast('Mungesa u shtua.')
+        void addSelectedProduct(id)
       })
     })
   }
@@ -356,12 +367,30 @@ export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat
     updateResults()
   }
 
+  const handleSearchEnter = (event: KeyboardEvent): void => {
+    if (event.key !== 'Enter') return
+    if (currentMatches.length === 1) {
+      event.preventDefault()
+      void addSelectedProduct(currentMatches[0].id)
+      return
+    }
+    if (currentMatches.length > 1) {
+      event.preventDefault()
+      showToast('Ka disa rezultate. Zgjidh njërin nga sugjerimet.')
+    }
+  }
+
   searchInput.addEventListener('input', () => applySearch(searchInput.value))
+  searchInput.addEventListener('keydown', handleSearchEnter)
   topSearchInput?.addEventListener('input', () => applySearch(topSearchInput.value))
+  topSearchInput?.addEventListener('keydown', handleSearchEnter)
+
   getProducts().then((products) => {
     allProducts = products
     if (statProducts) statProducts.textContent = String(products.length)
+    updateResults()
   })
+
   void loadAccountInfo()
-  refreshMissingList()
+  void refreshMissingList()
 }
