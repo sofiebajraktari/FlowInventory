@@ -14,7 +14,8 @@ import { applyStoredTheme, bindThemeToggleButtons } from './lib/theme.js'
 import './style.css'
 
 const app = document.getElementById('app')!
-const SESSION_GUARD_INTERVAL_MS = 30000
+const SESSION_GUARD_INTERVAL_MS = 120000
+const FOREGROUND_RECHECK_MS = 45000
 let loginPageModulePromise: Promise<typeof import('./pages/login.js')> | null = null
 let workerPageModulePromise: Promise<typeof import('./pages/mungesat.js')> | null = null
 let ownerPageModulePromise: Promise<typeof import('./pages/pronari.js')> | null = null
@@ -178,6 +179,7 @@ async function render(): Promise<void> {
 }
 
 function renderWithGuard(): void {
+  lastRenderAtMs = Date.now()
   render().catch((error: unknown) => {
     console.error('Render error:', error)
     const message = error instanceof Error ? error.message : 'Gabim i panjohur gjatë ngarkimit.'
@@ -195,13 +197,21 @@ function renderWithGuard(): void {
   })
 }
 
+let lastRenderAtMs = 0
+
+function renderIfStale(): void {
+  const now = Date.now()
+  if (now - lastRenderAtMs < FOREGROUND_RECHECK_MS) return
+  renderWithGuard()
+}
+
 disableLocalServiceWorkerCache()
   .catch((err) => console.warn('Local SW cleanup failed:', err))
   .finally(() => {
     window.addEventListener('hashchange', () => renderWithGuard())
-    window.addEventListener('focus', () => renderWithGuard())
+    window.addEventListener('focus', () => renderIfStale())
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) renderWithGuard()
+      if (!document.hidden) renderIfStale()
     })
     if (isSupabaseConfigured) {
       supabase.auth.onAuthStateChange((event) => {
