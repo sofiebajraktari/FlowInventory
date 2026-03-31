@@ -22,7 +22,7 @@ function mapLoginError(err: unknown): string {
   const lower = msg.toLowerCase()
 
   if (lower.includes('invalid login credentials')) {
-    return 'Email/username ose fjalëkalim i pasaktë.'
+    return 'Username ose fjalëkalim i pasaktë.'
   }
   if (lower.includes('email not confirmed')) {
     return 'Verifiko emailin para kyçjes.'
@@ -76,10 +76,10 @@ export function renderLogin(container: HTMLElement): void {
               `
                   : `
               <div class="auth-field">
-                <label for="email" class="auth-label">Email ose Username</label>
+                <label for="email" class="auth-label">Username</label>
                 <div class="auth-input-with-icon">
                   <span class="auth-input-icon" aria-hidden="true">${iconMail}</span>
-                  <input type="text" id="email" name="email" required placeholder="Shkruaj email ose username" autocomplete="username" class="auth-input auth-input-has-icon" />
+                  <input type="text" id="email" name="email" required placeholder="Shkruaj username" autocomplete="username" class="auth-input auth-input-has-icon" />
                 </div>
               </div>
               <div class="auth-field">
@@ -97,11 +97,6 @@ export function renderLogin(container: HTMLElement): void {
                 </label>
               </div>
               `
-              }
-              ${
-                recoveryMode
-                  ? ''
-                  : '<p class="text-[11px] text-slate-500">Mund të kyçesh me email ose username.</p>'
               }
               <p id="login-error" class="auth-error" aria-live="polite"></p>
               <button type="submit" id="login-btn" class="auth-primary-button">${recoveryMode ? 'Ruaj fjalëkalimin' : 'Kyçu'}</button>
@@ -194,12 +189,12 @@ export function renderLogin(container: HTMLElement): void {
     clearInputError(emailEl, passwordEl, passwordConfirmEl)
     if (!recoveryMode && !email) {
       markInputError(emailEl)
-      setError('Shkruaj email ose username.')
+      setError('Shkruaj username.')
       return
     }
-    if (!recoveryMode && /\s/.test(email)) {
+    if (!recoveryMode && !/^[a-z0-9._\-]{3,32}$/i.test(email)) {
       markInputError(emailEl)
-      setError('Email ose username nuk duhet të ketë hapësira.')
+      setError('Username duhet të ketë 3-32 karaktere dhe vetëm a-z, 0-9, ., _, -.')
       return
     }
     if (recoveryMode) {

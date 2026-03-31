@@ -54,6 +54,8 @@ const SUPPLIER_PHONE_STORAGE_KEY = 'flowinventory_supplier_phones'
 const SHORTAGE_SORT_STORAGE_KEY = 'flowinventory-owner-shortage-sort'
 const COMPANY_DETAILS_CACHE_KEY = 'flowinventory-company-details-cache-v1'
 const PENDING_SETTINGS_USERS_KEY = 'flowinventory-settings-pending-users-v1'
+const DEFAULT_BRAND_NAME = 'FlowInventory'
+const DEFAULT_BRAND_LOGO = '/brand/flowguard/logo.png'
 type OwnerSection =
   | 'dashboard'
   | 'mungesat'
@@ -123,12 +125,21 @@ function mergeCompanyDetails(serverValue: CompanyDetails, cachedValue: CompanyDe
   return {
     name: serverValue.name || cache.name,
     posName: serverValue.posName || cache.posName,
-    address: serverValue.address || cache.address,
-    phone: serverValue.phone || cache.phone,
+    // Keep address manual per company; avoid leaking old cached values.
+    address: serverValue.address,
+    // Keep phone manual per company; avoid leaking old cached values.
+    phone: serverValue.phone,
     email: serverValue.email || cache.email,
-    logoUrl: serverValue.logoUrl || cache.logoUrl,
+    // Keep logo bound to current company; fallback is handled by getCompanyBrand.
+    logoUrl: serverValue.logoUrl,
     otherInfo: serverValue.otherInfo || cache.otherInfo,
   }
+}
+
+function getCompanyBrand(details: CompanyDetails): { name: string; logoUrl: string } {
+  const name = details.name.trim() || details.posName.trim() || DEFAULT_BRAND_NAME
+  const logoUrl = details.logoUrl.trim() || DEFAULT_BRAND_LOGO
+  return { name, logoUrl }
 }
 
 function compareAlbanian(a: string, b: string): number {
@@ -171,6 +182,7 @@ export function renderPronari(
   currentRole: 'OWNER' | 'MANAGER' | 'WORKER' = 'OWNER'
 ): void {
   const canSeeSettings = currentRole === 'OWNER'
+  const canAccessOwnerOnlySections = currentRole === 'OWNER'
   const section: OwnerSection =
     routeSection === 'dashboard' ||
     routeSection === 'mungesat' ||
@@ -1217,132 +1229,166 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     return { product, qty, urgent }
   }
 
+  async function loadImageAsDataUrl(url: string): Promise<string | null> {
+    const source = String(url ?? '').trim()
+    if (!source) return null
+    try {
+      const response = await fetch(source)
+      if (!response.ok) return null
+      const blob = await response.blob()
+      const reader = new FileReader()
+      return await new Promise<string | null>((resolve) => {
+        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null)
+        reader.onerror = () => resolve(null)
+        reader.readAsDataURL(blob)
+      })
+    } catch {
+      return null
+    }
+  }
+
+  function getJsPdfImageFormat(dataUrl: string): 'PNG' | 'JPEG' | 'WEBP' {
+    if (dataUrl.startsWith('data:image/png')) return 'PNG'
+    if (dataUrl.startsWith('data:image/webp')) return 'WEBP'
+    return 'JPEG'
+  }
+
   async function downloadOrderPdf(order: OwnerOrder): Promise<void> {
     const doc = new jsPDF({ unit: 'mm', format: 'a4' })
     const pageWidth = doc.internal.pageSize.getWidth()
-    const cardWidth = 112
-    const cardX = (pageWidth - cardWidth) / 2
-    const cardY = 16
+    const pageHeight = doc.internal.pageSize.getHeight()
+    const cardX = 10
+    const cardY = 10
+    const cardWidth = pageWidth - 20
+    const cardHeight = pageHeight - 20
     const generatedAt = new Date().toLocaleString('sq-AL')
     const parsedItems = order.items.map(parseOrderItemForPdf)
     const totalQty = parsedItems.reduce((sum, row) => sum + row.qty, 0)
-
-    const companyName = companyDetails.name.trim() || companyDetails.posName.trim() || 'FlowInventory'
+    const brand = getCompanyBrand(companyDetails)
+    const companyName = brand.name
     const companyLine = [companyDetails.address.trim(), companyDetails.phone.trim()].filter(Boolean).join(' | ')
     const companyEmail = companyDetails.email.trim()
+    const logoData = (await loadImageAsDataUrl(brand.logoUrl)) ?? (await loadImageAsDataUrl(DEFAULT_BRAND_LOGO))
+    const logoFormat = logoData ? getJsPdfImageFormat(logoData) : null
 
-    doc.setDrawColor(219, 234, 254)
+    doc.setDrawColor(216, 222, 233)
     doc.setFillColor(255, 255, 255)
-    doc.roundedRect(cardX, cardY, cardWidth, 180, 1.5, 1.5, 'FD')
+    doc.roundedRect(cardX, cardY, cardWidth, cardHeight, 2.2, 2.2, 'FD')
 
-    doc.setFillColor(59, 130, 246)
-    doc.roundedRect(cardX + 1.5, cardY + 1.5, cardWidth - 3, 1.6, 0.6, 0.6, 'F')
+    doc.setFillColor(219, 230, 244)
+    doc.rect(cardX + 1.5, cardY + 1.6, cardWidth - 3, 1.3, 'F')
 
-    doc.setDrawColor(191, 219, 254)
-    doc.setFillColor(248, 250, 252)
-    doc.roundedRect(cardX + 2, cardY + 5, cardWidth - 4, 14, 1, 1, 'FD')
-    doc.setTextColor(30, 64, 175)
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8.5)
-    doc.text('FlowInventory', cardX + 4, cardY + 10)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6.8)
-    doc.setTextColor(71, 85, 105)
-    doc.text('Porosi per furnitor', cardX + 4, cardY + 13.4)
-
-    const boxGap = 2
-    const boxY = cardY + 22
-    const boxW = (cardWidth - 6 - boxGap) / 2
-    const leftX = cardX + 2
-    const rightX = leftX + boxW + boxGap
-    doc.setDrawColor(219, 234, 254)
-    doc.setFillColor(248, 250, 252)
-    doc.roundedRect(leftX, boxY, boxW, 22, 1, 1, 'FD')
-    doc.roundedRect(rightX, boxY, boxW, 22, 1, 1, 'FD')
-
-    doc.setTextColor(30, 64, 175)
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(6.6)
-    doc.text('Informacion i biznesit', leftX + 2, boxY + 4.2)
-    doc.text('Detajet e porosise', rightX + 2, boxY + 4.2)
-
+    const logoX = cardX + 6
+    const logoY = cardY + 6
+    const logoSize = 12
+    if (logoData && logoFormat) {
+      doc.addImage(logoData, logoFormat, logoX, logoY, logoSize, logoSize)
+    } else {
+      doc.setFillColor(67, 176, 228)
+      doc.circle(logoX + 6, logoY + 6, 5.5, 'F')
+    }
     doc.setTextColor(15, 23, 42)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6.3)
-    doc.text(companyName, leftX + 2, boxY + 8.6)
-    if (companyLine) doc.text(doc.splitTextToSize(companyLine, boxW - 4), leftX + 2, boxY + 12.2)
-    if (companyEmail) doc.text(doc.splitTextToSize(companyEmail, boxW - 4), leftX + 2, boxY + 16.2)
-    doc.text(`Krijuar: ${generatedAt}`, leftX + 2, boxY + 20)
-
     doc.setFont('helvetica', 'bold')
-    doc.text('ID e porosise:', rightX + 2, boxY + 8.6)
-    doc.text('Artikuj te porositur:', rightX + 2, boxY + 12.6)
-    doc.text('Sasi totale:', rightX + 2, boxY + 16.6)
+    doc.setFontSize(11)
+    doc.text(companyName, logoX + logoSize + 3, logoY + 4.8)
     doc.setFont('helvetica', 'normal')
-    doc.text(String(order.id), rightX + boxW - 2, boxY + 8.6, { align: 'right' })
-    doc.text(String(parsedItems.length), rightX + boxW - 2, boxY + 12.6, { align: 'right' })
-    doc.text(String(totalQty), rightX + boxW - 2, boxY + 16.6, { align: 'right' })
+    doc.setTextColor(100, 116, 139)
+    doc.setFontSize(8.2)
+    doc.text('Porosi për farmaci', logoX + logoSize + 3, logoY + 9.8)
 
-    const titleY = boxY + 25.5
-    doc.setFillColor(239, 246, 255)
-    doc.roundedRect(cardX + 2, titleY, cardWidth - 4, 5.6, 1, 1, 'F')
-    doc.setTextColor(30, 64, 175)
+    const boxGap = 4
+    const boxY = cardY + 24
+    const boxW = (cardWidth - 14 - boxGap) / 2
+    const leftX = cardX + 5
+    const rightX = leftX + boxW + boxGap
+    doc.setDrawColor(222, 230, 239)
+    doc.setFillColor(248, 250, 252)
+    doc.roundedRect(leftX, boxY, boxW, 24, 1.2, 1.2, 'FD')
+    doc.roundedRect(rightX, boxY, boxW, 24, 1.2, 1.2, 'FD')
+
+    doc.setTextColor(71, 85, 105)
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(6.8)
-    doc.text('Artikujt e porosise', cardX + 4, titleY + 3.8)
+    doc.setFontSize(8.2)
+    doc.text('Informacion i biznesit', leftX + 2.5, boxY + 5.2)
+    doc.text('Detajet e porosise', rightX + 2.5, boxY + 5.2)
 
-    const tableY = titleY + 7
-    const colNo = cardX + 3.5
-    const colProduct = cardX + 8
-    const colQty = cardX + cardWidth - 21
-    const colStatus = cardX + cardWidth - 3.5
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.2)
+    doc.setTextColor(17, 24, 39)
+    doc.text(companyName, leftX + 2.5, boxY + 10)
+    if (companyLine) doc.text(doc.splitTextToSize(companyLine, boxW - 5), leftX + 2.5, boxY + 14)
+    if (companyEmail) doc.text(doc.splitTextToSize(companyEmail, boxW - 5), leftX + 2.5, boxY + 18)
+    doc.setTextColor(100, 116, 139)
+    doc.text(`Krijuar: ${generatedAt}`, leftX + 2.5, boxY + 22)
+
+    doc.setTextColor(51, 65, 85)
+    doc.setFont('helvetica', 'bold')
+    doc.text('ID e porosise:', rightX + 2.5, boxY + 10)
+    doc.text('Artikujt e porosise:', rightX + 2.5, boxY + 14)
+    doc.text('Sasia totale:', rightX + 2.5, boxY + 18)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(15, 23, 42)
+    doc.text(String(order.id), rightX + boxW - 2.5, boxY + 10, { align: 'right' })
+    doc.text(String(parsedItems.length), rightX + boxW - 2.5, boxY + 14, { align: 'right' })
+    doc.text(String(totalQty), rightX + boxW - 2.5, boxY + 18, { align: 'right' })
+
+    const titleY = boxY + 29
+    doc.setDrawColor(223, 231, 241)
+    doc.setFillColor(243, 246, 252)
+    doc.roundedRect(cardX + 5, titleY, cardWidth - 10, 8, 1, 1, 'FD')
+    doc.setTextColor(51, 65, 85)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8.8)
+    doc.text('Artikujt e porosise', cardX + 8, titleY + 5.4)
+
+    const tableY = titleY + 10
+    const colNo = cardX + 8
+    const colProduct = cardX + 15
+    const colQty = cardX + cardWidth - 37
+    const colStatus = cardX + cardWidth - 9
     doc.setFillColor(59, 130, 246)
-    doc.roundedRect(cardX + 2, tableY, cardWidth - 4, 5.5, 0.8, 0.8, 'F')
+    doc.roundedRect(cardX + 5, tableY, cardWidth - 10, 7, 1, 1, 'F')
     doc.setTextColor(255, 255, 255)
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(6.2)
-    doc.text('#', colNo, tableY + 3.7)
-    doc.text('Produkt', colProduct, tableY + 3.7)
-    doc.text('Sasia', colQty, tableY + 3.7)
-    doc.text('Status', colStatus, tableY + 3.7, { align: 'right' })
+    doc.setFontSize(8)
+    doc.text('#', colNo, tableY + 4.7)
+    doc.text('Produkti', colProduct, tableY + 4.7)
+    doc.text('Sasia', colQty, tableY + 4.7)
+    doc.text('Statusi', colStatus, tableY + 4.7, { align: 'right' })
 
-    let rowY = tableY + 7
+    let rowY = tableY + 11
     parsedItems.forEach((item, index) => {
       if (index % 2 === 0) {
         doc.setFillColor(248, 250, 252)
-        doc.rect(cardX + 2, rowY - 3.8, cardWidth - 4, 5.6, 'F')
+        doc.rect(cardX + 5, rowY - 5.4, cardWidth - 10, 8, 'F')
       }
-      doc.setTextColor(15, 23, 42)
+      doc.setTextColor(17, 24, 39)
       doc.setFont('helvetica', 'normal')
-      doc.setFontSize(6.2)
+      doc.setFontSize(7.6)
       doc.text(String(index + 1), colNo, rowY)
-      const productText = doc.splitTextToSize(item.product, colQty - colProduct - 2)
+      const productText = doc.splitTextToSize(item.product, colQty - colProduct - 5)
       doc.text(productText[0] ?? item.product, colProduct, rowY)
       doc.text(String(item.qty), colQty, rowY)
       if (item.urgent) {
         doc.setTextColor(185, 28, 28)
-        doc.setFillColor(254, 226, 226)
-        doc.roundedRect(colStatus - 9.5, rowY - 3.2, 9, 4.2, 0.8, 0.8, 'F')
-        doc.text('Urgjent', colStatus - 0.8, rowY - 0.3, { align: 'right' })
+        doc.text('Urgjente', colStatus, rowY, { align: 'right' })
       } else {
-        doc.setTextColor(21, 128, 61)
-        doc.setFillColor(220, 252, 231)
-        doc.roundedRect(colStatus - 9.5, rowY - 3.2, 9, 4.2, 0.8, 0.8, 'F')
-        doc.text('Normal', colStatus - 0.8, rowY - 0.3, { align: 'right' })
+        doc.setTextColor(22, 163, 74)
+        doc.text('Normale', colStatus, rowY, { align: 'right' })
       }
-      doc.setDrawColor(241, 245, 249)
-      doc.line(cardX + 2, rowY + 2, cardX + cardWidth - 2, rowY + 2)
-      rowY += 5.6
+      doc.setDrawColor(235, 240, 247)
+      doc.line(cardX + 5, rowY + 2.8, cardX + cardWidth - 5, rowY + 2.8)
+      rowY += 8
     })
 
-    const noteY = rowY + 2
-    doc.setDrawColor(219, 234, 254)
-    doc.setFillColor(248, 250, 252)
-    doc.roundedRect(cardX + 2, noteY, cardWidth - 4, 8, 1, 1, 'FD')
+    const noteY = rowY + 4
+    doc.setDrawColor(223, 231, 241)
+    doc.setFillColor(246, 248, 252)
+    doc.roundedRect(cardX + 5, noteY, cardWidth - 10, 10, 1, 1, 'FD')
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6.1)
-    doc.setTextColor(51, 65, 85)
-    doc.text('Shenim: Ju lutem konfirmoni disponueshmerine dhe kohen e dorezimit.', cardX + 4, noteY + 5)
+    doc.setFontSize(7.2)
+    doc.setTextColor(71, 85, 105)
+    doc.text('Shenim: Ju lutem konfirmoni disponueshmerine dhe kohen e dorezimit.', cardX + 8, noteY + 6.2)
     const safeSupplier = order.supplier.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '')
     doc.save(`porosia-${order.id}-${safeSupplier || 'furnitor'}.pdf`)
   }
@@ -1764,10 +1810,6 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                 <option value="WORKER" ${roleValue === 'WORKER' ? 'selected' : ''}>WORKER</option>
               </select>
             </label>
-            <div class="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-              <p class="text-[11px] uppercase tracking-wide text-slate-500">Sesioni</p>
-              <p class="mt-1 text-xs font-medium text-slate-900">${accountInfo.sessionMode} • ${accountInfo.provider}</p>
-            </div>
             <label class="text-xs text-slate-700">
               Fjalëkalimi i ri
               <input id="owner-profile-new-password" type="password" placeholder="Minimum 6 karaktere" class="premium-input mt-1 w-full rounded-lg px-2.5 py-1.5 text-xs focus:outline-none" />
@@ -1778,7 +1820,6 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             </label>
           </div>
           <div class="flex flex-wrap items-center justify-between gap-2">
-            <p class="text-[11px] text-slate-500">User ID është hequr nga UI. Ruaj këtu ndryshimet e profilit dhe fjalëkalimit.</p>
             <button type="submit" class="premium-btn-primary rounded-lg px-3 py-1.5 text-xs font-semibold">Ruaj ndryshimet</button>
           </div>
         </form>
@@ -2511,6 +2552,11 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     const menuTriggerName = document.getElementById('owner-menu-trigger-name')
     const menuTriggerRole = document.getElementById('owner-menu-trigger-role')
     const menuEmail = document.getElementById('owner-menu-email')
+    const sidebarBrandName = document.getElementById('owner-sidebar-brand-name')
+    const sidebarBrandCaption = document.getElementById('owner-sidebar-brand-caption')
+    const sidebarBrandLogo = document.getElementById('owner-sidebar-brand-logo') as HTMLImageElement | null
+    const reopenBrandLogo = document.getElementById('owner-logo-reopen-img') as HTMLImageElement | null
+    const brand = getCompanyBrand(companyDetails)
     const displayName = `${accountInfo.firstName} ${accountInfo.lastName}`.trim()
     if (sidebarAvatar) sidebarAvatar.textContent = (accountInfo.firstName || 'O').slice(0, 1).toUpperCase()
     if (menuAvatar) menuAvatar.textContent = (accountInfo.firstName || 'O').slice(0, 1).toUpperCase()
@@ -2521,10 +2567,24 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     if (menuEmail) menuEmail.textContent = accountInfo.email || '—'
     if (sidebarName) sidebarName.textContent = displayName || 'Përdorues'
     if (sidebarRole) sidebarRole.textContent = accountInfo.role || '...'
+    if (sidebarBrandName) sidebarBrandName.textContent = brand.name
+    if (sidebarBrandCaption) sidebarBrandCaption.textContent = brand.name
+    if (sidebarBrandLogo) {
+      sidebarBrandLogo.src = brand.logoUrl
+      sidebarBrandLogo.alt = brand.name
+    }
+    if (reopenBrandLogo) {
+      reopenBrandLogo.src = brand.logoUrl
+      reopenBrandLogo.alt = brand.name
+    }
   }
 
   const selIfImportCat = (v: 'barna' | 'all' | 'front'): string =>
     ownerProductCategoryFilter === v ? 'selected' : ''
+  const companyBrand = getCompanyBrand(companyDetails)
+  const topSearchPlaceholder = canAccessOwnerOnlySections
+    ? 'Search and jump (dashboard, mungesat, porosite, import, ekipa, kompania, settings)'
+    : 'Search and jump (dashboard, mungesat, porosite, profile)'
 
   container.innerHTML = `
     <div id="owner-shell" class="premium-shell">
@@ -2533,9 +2593,9 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
           <div class="mb-6 flex items-center justify-between gap-2">
             <div class="flex items-center gap-2">
               <div class="w-9 h-9 rounded-2xl bg-white flex items-center justify-center shadow">
-                <img src="/brand/flowguard/logo.png" alt="FlowGuard logo" class="w-7 h-7 rounded-full object-cover" />
+                <img id="owner-sidebar-brand-logo" src="${companyBrand.logoUrl}" alt="${companyBrand.name}" class="w-7 h-7 rounded-full object-cover" onerror="this.onerror=null;this.src='${DEFAULT_BRAND_LOGO}'" />
               </div>
-              <span class="text-sm font-semibold text-slate-900">FlowInventory</span>
+              <span id="owner-sidebar-brand-name" class="text-sm font-semibold text-slate-900">${companyBrand.name}</span>
             </div>
             <button type="button" id="owner-nav-toggle" class="premium-nav-toggle shrink-0" aria-label="Hap menynë" aria-expanded="true">
               ${iconMenu}
@@ -2546,10 +2606,10 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             <a href="#/pronari" class="${active('dashboard')}"><span class="premium-nav-dot"></span>Dashboard</a>
             <a href="#/pronari/mungesat" class="${active('mungesat')}"><span class="premium-nav-dot"></span>Mungesat</a>
             <a href="#/porosite" class="${active('porosite')}"><span class="premium-nav-dot"></span>Porositë</a>
-            <a href="#/import" class="${active('import')}"><span class="premium-nav-dot"></span>Import</a>
-            <p class="pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">KOMPANIA</p>
-            <a href="#/kompania" class="${active('kompania')}"><span class="premium-nav-dot"></span>Detajet e Kompanisë</a>
-            <a href="#/ekipa" class="${active('ekipa')}"><span class="premium-nav-dot"></span>Ekipa</a>
+            ${canAccessOwnerOnlySections ? `<a href="#/import" class="${active('import')}"><span class="premium-nav-dot"></span>Import</a>` : ''}
+            ${canAccessOwnerOnlySections ? '<p class="pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">KOMPANIA</p>' : ''}
+            ${canAccessOwnerOnlySections ? `<a href="#/kompania" class="${active('kompania')}"><span class="premium-nav-dot"></span>Detajet e Kompanisë</a>` : ''}
+            ${canAccessOwnerOnlySections ? `<a href="#/ekipa" class="${active('ekipa')}"><span class="premium-nav-dot"></span>Ekipa</a>` : ''}
             ${canSeeSettings ? `<a href="#/settings" class="${active('settings')}"><span class="premium-nav-dot"></span>Settings</a>` : ''}
           </nav>
         </div>
@@ -2569,7 +2629,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                 <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
                 Online
               </span>
-              <span class="text-slate-400">FlowInventory</span>
+              <span id="owner-sidebar-brand-caption" class="text-slate-400">${companyBrand.name}</span>
             </div>
           </div>
         </div>
@@ -2582,7 +2642,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
         aria-label="Hap menynë"
         title="Hap menynë"
       >
-        <img src="/brand/flowguard/logo.png" alt="FlowInventory" class="h-6 w-6 rounded-full object-cover" />
+        <img id="owner-logo-reopen-img" src="${companyBrand.logoUrl}" alt="${companyBrand.name}" class="h-6 w-6 rounded-full object-cover" onerror="this.onerror=null;this.src='${DEFAULT_BRAND_LOGO}'" />
       </button>
 
       <main class="premium-main px-4 py-4 md:px-6 md:py-5">
@@ -2633,7 +2693,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                   <input
                     id="owner-top-search"
                     type="text"
-                    placeholder="Search and jump (dashboard, mungesat, porosite, import, ekipa, kompania, settings)"
+                    placeholder="${topSearchPlaceholder}"
                     class="premium-top-search-input"
                     value="${searchQuery}"
                     list="owner-advanced-search-options"
@@ -2642,10 +2702,10 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                     <option value="dashboard"></option>
                     <option value="mungesat"></option>
                     <option value="porosite"></option>
-                    <option value="import"></option>
-                    <option value="ekipa"></option>
-                    <option value="kompania"></option>
-                    <option value="settings"></option>
+                    ${canAccessOwnerOnlySections ? '<option value="import"></option>' : ''}
+                    ${canAccessOwnerOnlySections ? '<option value="ekipa"></option>' : ''}
+                    ${canAccessOwnerOnlySections ? '<option value="kompania"></option>' : ''}
+                    ${canSeeSettings ? '<option value="settings"></option>' : ''}
                     <option value="profile"></option>
                   </datalist>
                 </div>
@@ -2677,7 +2737,6 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                     <button type="button" id="owner-account-profile" class="w-full text-left rounded-lg px-2.5 py-2 text-xs text-slate-700 hover:bg-slate-100">
                       Profile
                     </button>
-                    ${canSeeSettings ? `<button type="button" id="owner-account-settings" class="w-full text-left rounded-lg px-2.5 py-2 text-xs text-slate-700 hover:bg-slate-100">Settings</button>` : ''}
                     <button type="button" data-theme-toggle="1" data-theme-fixed-label="Theme" class="owner-account-menu-item-theme mt-1 flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-xs text-slate-700 hover:bg-slate-100">
                       <span>Theme</span>
                     </button>
@@ -3025,12 +3084,16 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       { keys: ['dashboard', 'home'], hash: '#/pronari' },
       { keys: ['mungesat', 'mungesa', 'shortage'], hash: '#/pronari/mungesat' },
       { keys: ['porosite', 'porosi', 'orders'], hash: '#/porosite' },
-      { keys: ['import', 'excel', 'csv'], hash: '#/import' },
-      { keys: ['ekipa', 'team', 'users'], hash: '#/ekipa' },
-      { keys: ['kompania', 'company'], hash: '#/kompania' },
-      { keys: ['settings', 'konfigurim', 'config'], hash: '#/settings' },
       { keys: ['profile', 'profili', 'account'], hash: '#/profile' },
     ]
+    if (canAccessOwnerOnlySections) {
+      routeMatches.push(
+        { keys: ['import', 'excel', 'csv'], hash: '#/import' },
+        { keys: ['ekipa', 'team', 'users'], hash: '#/ekipa' },
+        { keys: ['kompania', 'company'], hash: '#/kompania' },
+        { keys: ['settings', 'konfigurim', 'config'], hash: '#/settings' }
+      )
+    }
     const route = routeMatches.find((m) => m.keys.some((k) => q === k || q.includes(k) || k.includes(q)))
     if (route) {
       navigateHash(route.hash)

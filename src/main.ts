@@ -132,7 +132,7 @@ async function render(): Promise<void> {
       return
     }
     const section = getOwnerSection(route)
-    if ((section === 'settings' || section === 'kompania') && role !== 'OWNER') {
+    if ((section === 'settings' || section === 'kompania' || section === 'import' || section === 'ekipa') && role !== 'OWNER') {
       window.location.hash = '#/pronari'
       return
     }
