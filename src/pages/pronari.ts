@@ -2691,7 +2691,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
           </div>
         </header>
 
-        <section class="${section === 'import' || section === 'settings' || section === 'profile' || section === 'kompania' || section === 'ekipa' ? 'hidden ' : ''}relative z-0 mb-6 grid gap-3 md:grid-cols-4">
+        <section class="${section === 'dashboard' ? '' : 'hidden '}relative z-0 mb-6 grid gap-3 md:grid-cols-4">
           <div class="premium-kpi p-3">
             <div class="ui-kpi-icon">${iconKpiShortage}</div>
             <p class="mt-2 text-[11px] uppercase tracking-wide text-slate-500">Kontrolli</p>
