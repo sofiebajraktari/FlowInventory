@@ -1417,7 +1417,7 @@ export function renderPronari(
           <div class="grid gap-3 md:grid-cols-2">
             <label class="text-sm text-slate-700">
               Username
-              <input id="owner-edit-user-username" type="text" class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input id="owner-edit-user-username" type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </label>
             <label class="text-sm text-slate-700">
               Roli
@@ -1429,11 +1429,11 @@ export function renderPronari(
             </label>
             <label class="text-sm text-slate-700">
               Fjalëkalim i ri
-              <input id="owner-edit-user-password" type="password" placeholder="Lëre bosh nëse nuk do ndryshim" class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input id="owner-edit-user-password" type="password" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Lëre bosh nëse nuk do ndryshim" class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </label>
             <label class="text-sm text-slate-700">
               Konfirmo fjalëkalimin
-              <input id="owner-edit-user-password-confirm" type="password" placeholder="Përsërite fjalëkalimin e ri" class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <input id="owner-edit-user-password-confirm" type="password" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Përsërite fjalëkalimin e ri" class="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </label>
           </div>
           <label class="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-700">
@@ -2347,17 +2347,17 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
               <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500">Krijo përdorues të ri</h3>
               <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Akses i menjëhershëm</span>
             </div>
-            <form id="owner-create-user-form" class="grid gap-3 md:grid-cols-2">
+            <form id="owner-create-user-form" autocomplete="off" class="grid gap-3 md:grid-cols-2">
               <label class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                 Username
-                <input id="owner-new-user-username" type="text" placeholder="Shkruaj username..." class="premium-input mt-1 w-full rounded-xl border-slate-300 bg-white px-3 py-2 text-[11px] focus:outline-none" />
+                <input id="owner-new-user-username" type="text" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Shkruaj username..." class="premium-input mt-1 w-full rounded-xl border-slate-300 bg-white px-3 py-2 text-[11px] focus:outline-none" />
               </label>
               <label class="text-[10px] font-medium normal-case tracking-normal text-slate-500 md:col-span-2">
                 Useri mund të kyçet me username. Email-i teknik krijohet automatikisht.
               </label>
               <label class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                 Password
-                <input id="owner-new-user-password" type="password" placeholder="Shkruaj fjalëkalimin..." class="premium-input mt-1 w-full rounded-xl border-slate-300 bg-white px-3 py-2 text-[11px] focus:outline-none" />
+                <input id="owner-new-user-password" type="password" autocomplete="new-password" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Shkruaj fjalëkalimin..." class="premium-input mt-1 w-full rounded-xl border-slate-300 bg-white px-3 py-2 text-[11px] focus:outline-none" />
               </label>
               <label class="text-[10px] font-semibold uppercase tracking-wide text-slate-500 md:col-span-1">
                 Roli

@@ -4186,6 +4186,117 @@ body.theme-dark .owner-order-status-failed {
   border-color: rgba(248, 113, 113, 0.5) !important;
 }
 
+body.theme-dark #owner-settings-panel .premium-card {
+  background: linear-gradient(180deg, rgba(9, 16, 30, 0.96) 0%, rgba(8, 14, 28, 0.92) 100%) !important;
+  border-color: rgba(51, 65, 85, 0.9) !important;
+  box-shadow:
+    0 14px 28px rgba(2, 6, 23, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+body.theme-dark #owner-settings-panel .from-white,
+body.theme-dark #owner-settings-panel .via-slate-50,
+body.theme-dark #owner-settings-panel .to-emerald-50\/40,
+body.theme-dark #owner-settings-panel .to-emerald-50,
+body.theme-dark #owner-settings-panel .bg-gradient-to-br,
+body.theme-dark #owner-settings-panel .bg-gradient-to-r {
+  background: linear-gradient(180deg, rgba(9, 16, 30, 0.96) 0%, rgba(8, 14, 28, 0.92) 100%) !important;
+}
+
+body.theme-dark #owner-settings-panel .border-emerald-100,
+body.theme-dark #owner-settings-panel .border-emerald-200,
+body.theme-dark #owner-settings-panel .border-emerald-300,
+body.theme-dark #owner-settings-panel .border-blue-200,
+body.theme-dark #owner-settings-panel .border-indigo-200,
+body.theme-dark #owner-settings-panel .border-slate-200,
+body.theme-dark #owner-settings-panel .border-slate-300 {
+  border-color: rgba(51, 65, 85, 0.9) !important;
+}
+
+body.theme-dark #owner-settings-panel .rounded-2xl.bg-white,
+body.theme-dark #owner-settings-panel .bg-slate-50,
+body.theme-dark #owner-settings-panel .bg-emerald-50,
+body.theme-dark #owner-settings-panel .bg-blue-50,
+body.theme-dark #owner-settings-panel .bg-indigo-50,
+body.theme-dark #owner-settings-panel .bg-rose-50 {
+  background: rgba(15, 23, 42, 0.78) !important;
+}
+
+body.theme-dark #owner-settings-panel .text-emerald-900,
+body.theme-dark #owner-settings-panel .text-blue-900,
+body.theme-dark #owner-settings-panel .text-indigo-900 {
+  color: #e2e8f0 !important;
+}
+
+body.theme-dark #owner-settings-panel .text-emerald-800,
+body.theme-dark #owner-settings-panel .text-emerald-700,
+body.theme-dark #owner-settings-panel .text-blue-700,
+body.theme-dark #owner-settings-panel .text-indigo-700,
+body.theme-dark #owner-settings-panel .text-rose-700 {
+  color: #bfdbfe !important;
+}
+
+body.theme-dark #owner-settings-panel .premium-input {
+  background: rgba(9, 16, 30, 0.95) !important;
+  border-color: rgba(71, 85, 105, 0.92) !important;
+  color: #e2e8f0 !important;
+}
+
+body.theme-dark #owner-settings-panel thead {
+  background: rgba(15, 23, 42, 0.92) !important;
+}
+
+body.theme-dark #owner-settings-panel tbody tr {
+  background: rgba(8, 14, 28, 0.7) !important;
+  border-color: rgba(51, 65, 85, 0.72) !important;
+}
+
+body.theme-dark #owner-settings-panel tbody tr:hover {
+  background: rgba(15, 23, 42, 0.92) !important;
+}
+
+body.theme-dark #owner-settings-panel .bg-white.px-2 {
+  background: rgba(10, 18, 32, 0.96) !important;
+}
+
+body.theme-dark #owner-settings-panel [data-action='edit-user-row'] {
+  background: rgba(10, 18, 32, 0.96) !important;
+  border-color: #3b4a62 !important;
+  color: #dbe5f3 !important;
+}
+
+body.theme-dark #owner-settings-panel [data-action='edit-user-row']:hover {
+  background: rgba(15, 23, 42, 0.98) !important;
+  border-color: #526581 !important;
+}
+
+body.theme-dark #owner-settings-panel [data-action='delete-user'] {
+  background: rgba(127, 29, 29, 0.24) !important;
+  border-color: rgba(248, 113, 113, 0.45) !important;
+  color: #fecaca !important;
+}
+
+body.theme-dark #owner-settings-panel .border-emerald-300.bg-linear-to-r {
+  background: linear-gradient(90deg, rgba(6, 78, 59, 0.34) 0%, rgba(15, 23, 42, 0.9) 100%) !important;
+  border-color: rgba(16, 185, 129, 0.5) !important;
+}
+
+body.theme-dark #owner-settings-panel .border-emerald-300.bg-linear-to-r .text-emerald-700 {
+  color: #a7f3d0 !important;
+}
+
+body.theme-dark #owner-settings-panel .border-emerald-300.bg-linear-to-r .text-emerald-900 {
+  color: #ecfeff !important;
+}
+
+body.theme-dark #owner-settings-panel .border-emerald-300.bg-linear-to-r .bg-emerald-100 {
+  background: rgba(6, 78, 59, 0.55) !important;
+}
+
+body.theme-dark #owner-settings-panel .border-emerald-300.bg-linear-to-r .ring-emerald-200 {
+  box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.45) !important;
+}
+
 body.theme-dark .auth-hero-right {
   background: linear-gradient(135deg, #082f49 0%, #0b3d67 48%, #1e3a8a 100%);
   border-color: rgba(125, 211, 252, 0.24);

@@ -201,10 +201,13 @@ function fromMockProducts(rows: MockProduct[]): ProductView[] {
 
 export async function getProducts(): Promise<ProductView[]> {
   if (!isSupabaseConfigured) return fromMockProducts(getProductsMock())
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) return []
 
   const { data, error } = await supabase
     .from('products')
     .select('id,name,generic_name,default_order_qty,category,aliases,supplier_id,suppliers(name)')
+    .eq('company_id', companyId)
     .order('name')
 
   if (error || !data) return []
@@ -231,9 +234,12 @@ export async function getSuppliers(): Promise<SupplierView[]> {
       .sort((a, b) => a[0].localeCompare(b[0], 'sq-AL'))
       .map(([name, count], idx) => ({ id: `mock-${idx}`, name, productCount: count }))
   }
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) return []
   const { data, error } = await supabase
     .from('suppliers')
     .select('id,name,products(count)')
+    .eq('company_id', companyId)
     .order('name')
   if (error || !data) return []
   return data.map((row: any) => ({
@@ -247,9 +253,17 @@ export async function addSupplier(name: string): Promise<{ ok: true } | { ok: fa
   const supplierName = name.trim()
   if (!supplierName) return { ok: false, message: 'Shkruaj emrin e furnitorit.' }
   if (!isSupabaseConfigured) return { ok: true }
-  const existing = await supabase.from('suppliers').select('id').ilike('name', supplierName).limit(1).maybeSingle()
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) return { ok: false, message: 'User jo i kyçur.' }
+  const existing = await supabase
+    .from('suppliers')
+    .select('id')
+    .eq('company_id', companyId)
+    .ilike('name', supplierName)
+    .limit(1)
+    .maybeSingle()
   if (existing.data?.id) return { ok: false, message: 'Ky furnitor ekziston.' }
-  const ins = await supabase.from('suppliers').insert({ name: supplierName })
+  const ins = await supabase.from('suppliers').insert({ name: supplierName, company_id: companyId })
   if (ins.error) return { ok: false, message: ins.error.message }
   return { ok: true }
 }
@@ -260,11 +274,23 @@ export async function renameSupplier(id: string, name: string): Promise<{ ok: tr
   if (!supplierId) return { ok: false, message: 'ID e furnitorit mungon.' }
   if (!supplierName) return { ok: false, message: 'Shkruaj emrin e furnitorit.' }
   if (!isSupabaseConfigured) return { ok: true }
-  const duplicate = await supabase.from('suppliers').select('id').ilike('name', supplierName).limit(1).maybeSingle()
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) return { ok: false, message: 'User jo i kyçur.' }
+  const duplicate = await supabase
+    .from('suppliers')
+    .select('id')
+    .eq('company_id', companyId)
+    .ilike('name', supplierName)
+    .limit(1)
+    .maybeSingle()
   if (duplicate.data?.id && duplicate.data.id !== supplierId) {
     return { ok: false, message: 'Ekziston furnitor me këtë emër.' }
   }
-  const up = await supabase.from('suppliers').update({ name: supplierName }).eq('id', supplierId)
+  const up = await supabase
+    .from('suppliers')
+    .update({ name: supplierName })
+    .eq('id', supplierId)
+    .eq('company_id', companyId)
   if (up.error) return { ok: false, message: up.error.message }
   return { ok: true }
 }
@@ -273,11 +299,19 @@ export async function deleteSupplier(id: string): Promise<{ ok: true } | { ok: f
   const supplierId = id.trim()
   if (!supplierId) return { ok: false, message: 'ID e furnitorit mungon.' }
   if (!isSupabaseConfigured) return { ok: true }
-  const used = await supabase.from('products').select('id').eq('supplier_id', supplierId).limit(1).maybeSingle()
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) return { ok: false, message: 'User jo i kyçur.' }
+  const used = await supabase
+    .from('products')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('supplier_id', supplierId)
+    .limit(1)
+    .maybeSingle()
   if (used.data?.id) {
     return { ok: false, message: 'Furnitori ka produkte aktive. Hiqi ose ndrysho furnitorin e produkteve.' }
   }
-  const del = await supabase.from('suppliers').delete().eq('id', supplierId)
+  const del = await supabase.from('suppliers').delete().eq('id', supplierId).eq('company_id', companyId)
   if (del.error) return { ok: false, message: del.error.message }
   return { ok: true }
 }
@@ -759,11 +793,22 @@ export async function getDashboardInsights(days = 7): Promise<DashboardInsights>
       weekdayTrend: weekdayLabels.map((day) => ({ day, count: weekdayMap.get(day) ?? 0 })),
     }
   }
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) {
+    return {
+      shortageTrend: emptyTrend,
+      topSuppliers: [],
+      topProducts: [],
+      urgentBreakdown: { urgent: 0, normal: 0 },
+      weekdayTrend: emptyWeekdays,
+    }
+  }
 
   const [shortagesRes, products] = await Promise.all([
     supabase
       .from('mungesat')
       .select('entry_date,created_at,added_count,product_id,urgent')
+      .eq('company_id', companyId)
       .order('created_at', { ascending: true }),
     getProducts(),
   ])
@@ -882,11 +927,14 @@ export async function addProduct(input: {
   const lastPriceDate = (input.lastPriceDate ?? '').trim() || null
   if (!name) return { ok: false, message: 'Shkruaj emrin e barit.' }
   if (!supplierName) return { ok: false, message: 'Shkruaj furnitorin.' }
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) return { ok: false, message: 'User jo i kyçur.' }
 
   let supplierId: string | null = null
   const supplierRes = await supabase
     .from('suppliers')
     .select('id,name')
+    .eq('company_id', companyId)
     .ilike('name', supplierName)
     .limit(1)
     .maybeSingle()
@@ -896,7 +944,7 @@ export async function addProduct(input: {
   } else {
     const insertSupplier = await supabase
       .from('suppliers')
-      .insert({ name: supplierName })
+      .insert({ name: supplierName, company_id: companyId })
       .select('id')
       .single()
     if (insertSupplier.error || !insertSupplier.data?.id) {
@@ -908,6 +956,7 @@ export async function addProduct(input: {
   const { data: sameSupplierProducts, error: listErr } = await supabase
     .from('products')
     .select('id,name')
+    .eq('company_id', companyId)
     .eq('supplier_id', supplierId)
   if (listErr) return { ok: false, message: listErr.message }
   const nameNorm = name.trim().toLocaleLowerCase('sq-AL')
@@ -926,13 +975,14 @@ export async function addProduct(input: {
   }
 
   if (existingId) {
-    const { error } = await supabase.from('products').update(payload).eq('id', existingId)
+    const { error } = await supabase.from('products').update(payload).eq('id', existingId).eq('company_id', companyId)
     if (error) return { ok: false, message: error.message }
     return { ok: true }
   }
 
   const insertProduct = await supabase.from('products').insert({
     name,
+    company_id: companyId,
     supplier_id: supplierId,
     ...payload,
   })
@@ -976,11 +1026,14 @@ export async function updateProduct(input: {
   if (!id) return { ok: false, message: 'ID e produktit mungon.' }
   if (!name) return { ok: false, message: 'Shkruaj emrin e barit.' }
   if (!supplierName) return { ok: false, message: 'Shkruaj furnitorin.' }
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) return { ok: false, message: 'User jo i kyçur.' }
 
   let supplierId: string | null = null
   const supplierRes = await supabase
     .from('suppliers')
     .select('id,name')
+    .eq('company_id', companyId)
     .ilike('name', supplierName)
     .limit(1)
     .maybeSingle()
@@ -989,7 +1042,7 @@ export async function updateProduct(input: {
   } else {
     const insertSupplier = await supabase
       .from('suppliers')
-      .insert({ name: supplierName })
+      .insert({ name: supplierName, company_id: companyId })
       .select('id')
       .single()
     if (insertSupplier.error || !insertSupplier.data?.id) {
@@ -1001,6 +1054,7 @@ export async function updateProduct(input: {
   const { data: sameSupplierProducts, error: listErr } = await supabase
     .from('products')
     .select('id,name')
+    .eq('company_id', companyId)
     .eq('supplier_id', supplierId)
   if (listErr) return { ok: false, message: listErr.message }
   const nameNorm = name.toLocaleLowerCase('sq-AL')
@@ -1027,6 +1081,7 @@ export async function updateProduct(input: {
       updated_at: new Date().toISOString(),
     })
     .eq('id', id)
+    .eq('company_id', companyId)
 
   if (error) return { ok: false, message: error.message }
   return { ok: true }
@@ -1039,8 +1094,16 @@ export async function deleteProduct(id: string): Promise<{ ok: true } | { ok: fa
   }
   const productId = id.trim()
   if (!productId) return { ok: false, message: 'ID e produktit mungon.' }
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) return { ok: false, message: 'User jo i kyçur.' }
 
-  const { data, error } = await supabase.from('products').delete().eq('id', productId).select('id').maybeSingle()
+  const { data, error } = await supabase
+    .from('products')
+    .delete()
+    .eq('id', productId)
+    .eq('company_id', companyId)
+    .select('id')
+    .maybeSingle()
   if (error) {
     if ((error as { code?: string }).code === '23503') {
       return {
@@ -1071,12 +1134,15 @@ export async function addMungese(productId: string, urgent: boolean, note: strin
 
 export async function getTodayShortages(): Promise<ShortageView[]> {
   if (!isSupabaseConfigured) return fromMockShortages(getShortagesMock())
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) return []
 
   const [productsRes, shortagesRes, lastQtyRpc] = await Promise.all([
     getProducts(),
     supabase
       .from('mungesat')
       .select('id,product_id,urgent,note,added_count,created_by,created_by_role')
+      .eq('company_id', companyId)
       .eq('entry_date', todayIso())
       .order('created_at', { ascending: false }),
     supabase.rpc('last_final_qty_by_product'),
@@ -1093,7 +1159,11 @@ export async function getTodayShortages(): Promise<ShortageView[]> {
   )
   const profileLabelById = new Map<string, string>()
   if (createdByIds.length) {
-    const profilesRes = await supabase.from('profiles').select('id,username,email').in('id', createdByIds)
+    const profilesRes = await supabase
+      .from('profiles')
+      .select('id,username,email')
+      .eq('company_id', companyId)
+      .in('id', createdByIds)
     if (!profilesRes.error && Array.isArray(profilesRes.data)) {
       for (const row of profilesRes.data as Array<{ id: string; username?: string | null; email?: string | null }>) {
         const id = String(row.id ?? '').trim()
@@ -1167,8 +1237,10 @@ export async function updateShortageMeta(
   if (typeof patch.urgent === 'boolean') payload.urgent = patch.urgent
   if (typeof patch.note === 'string') payload.note = patch.note
   if (!Object.keys(payload).length) return getTodayShortages()
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) return getTodayShortages()
 
-  const { error } = await supabase.from('mungesat').update(payload).eq('id', id)
+  const { error } = await supabase.from('mungesat').update(payload).eq('id', id).eq('company_id', companyId)
   if (error) throw error
   return getTodayShortages()
 }
@@ -1178,10 +1250,13 @@ export async function reassignShortageProduct(shortageId: string, productId: str
   const targetShortageId = shortageId.trim()
   const targetProductId = productId.trim()
   if (!targetShortageId || !targetProductId) return getTodayShortages()
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) return getTodayShortages()
   const { error } = await supabase
     .from('mungesat')
     .update({ product_id: targetProductId, updated_at: new Date().toISOString() })
     .eq('id', targetShortageId)
+    .eq('company_id', companyId)
   if (error) throw error
   return getTodayShortages()
 }
@@ -1191,7 +1266,9 @@ export async function deleteShortage(id: string): Promise<ShortageView[]> {
     const rows = deleteShortageMock(id)
     return fromMockShortages(rows)
   }
-  const { error } = await supabase.from('mungesat').delete().eq('id', id)
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) return getTodayShortages()
+  const { error } = await supabase.from('mungesat').delete().eq('id', id).eq('company_id', companyId)
   if (error) throw error
   return getTodayShortages()
 }
@@ -1216,6 +1293,8 @@ export async function generateOrdersFromShortages(rows: ShortageView[]): Promise
 
   const { data: authData } = await supabase.auth.getUser()
   const userId = authData.user?.id
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) throw new Error('Kompania aktive mungon.')
   if (!userId) throw new Error('User jo i kyçur.')
 
   const grouped = new Map<string, ShortageView[]>()
@@ -1237,12 +1316,17 @@ export async function generateOrdersFromShortages(rows: ShortageView[]): Promise
       const supplierRes = await supabase
         .from('suppliers')
         .select('id')
+        .eq('company_id', companyId)
         .ilike('name', supplierName)
         .limit(1)
         .maybeSingle()
       supplierId = supplierRes.data?.id ?? null
       if (!supplierId) {
-        const ins = await supabase.from('suppliers').insert({ name: supplierName }).select('id').single()
+        const ins = await supabase
+          .from('suppliers')
+          .insert({ name: supplierName, company_id: companyId })
+          .select('id')
+          .single()
         supplierId = ins.data?.id ?? null
       }
     }
@@ -1251,6 +1335,7 @@ export async function generateOrdersFromShortages(rows: ShortageView[]): Promise
     const existingDraftsRes = await supabase
       .from('orders')
       .select('id')
+      .eq('company_id', companyId)
       .eq('supplier_id', supplierId)
       .eq('created_by', userId)
       .eq('status', 'DRAFT')
@@ -1265,13 +1350,14 @@ export async function generateOrdersFromShortages(rows: ShortageView[]): Promise
       orderId = existingDraftIds[0]
       const staleDraftIds = existingDraftIds.slice(1)
       if (staleDraftIds.length > 0) {
-        await supabase.from('orders').delete().in('id', staleDraftIds)
+        await supabase.from('orders').delete().eq('company_id', companyId).in('id', staleDraftIds)
       }
-      await supabase.from('order_items').delete().eq('order_id', orderId)
+      await supabase.from('order_items').delete().eq('company_id', companyId).eq('order_id', orderId)
     } else {
       const orderInsert = await supabase
         .from('orders')
         .insert({
+          company_id: companyId,
           supplier_id: supplierId,
           status: 'DRAFT',
           created_by: userId,
@@ -1284,6 +1370,7 @@ export async function generateOrdersFromShortages(rows: ShortageView[]): Promise
     if (!orderId) continue
 
     const orderItemsPayload = items.map((r) => ({
+      company_id: companyId,
       order_id: orderId,
       product_id: r.productId,
       suggested_qty: r.suggestedQty,
@@ -1303,7 +1390,7 @@ ID: ${orderId}
 ${renderedItems.join('\n')}
 Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
 
-    await supabase.from('orders').update({ receipt_text: receipt }).eq('id', orderId)
+    await supabase.from('orders').update({ receipt_text: receipt }).eq('id', orderId).eq('company_id', companyId)
 
     created.push({
       id: stableOrderUiId(orderId, created.length + 100),
@@ -1319,6 +1406,8 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
 
 export async function getRecentOrders(limit = 100): Promise<OwnerOrder[]> {
   if (!isSupabaseConfigured) return []
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) return []
 
   const since = new Date()
   since.setDate(since.getDate() - 30)
@@ -1326,6 +1415,7 @@ export async function getRecentOrders(limit = 100): Promise<OwnerOrder[]> {
   const { data, error } = await supabase
     .from('orders')
     .select('id,status,created_at,suppliers(name),order_items(final_qty,suggested_qty,products(name))')
+    .eq('company_id', companyId)
     .gte('created_at', since.toISOString())
     .order('created_at', { ascending: false })
     .limit(limit)
@@ -1359,6 +1449,9 @@ export async function markOrderAsSent(order: OwnerOrder): Promise<OwnerOrder> {
     throw new Error('Porosia nuk ka ID nga baza — nuk mund të ruhet statusi.')
   }
 
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) throw new Error('Kompania aktive mungon.')
+
   const { error: rpcError } = await supabase.rpc('mark_order_sent', {
     p_order_id: order.dbId,
   })
@@ -1381,6 +1474,7 @@ export async function markOrderAsSent(order: OwnerOrder): Promise<OwnerOrder> {
     .from('orders')
     .update({ status: 'SENT', sent_at: new Date().toISOString() })
     .eq('id', order.dbId)
+    .eq('company_id', companyId)
     .select('id')
     .maybeSingle()
   if (error) throw error
