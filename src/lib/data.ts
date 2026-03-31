@@ -45,6 +45,48 @@ export interface ShortageView {
   suggestedQty: number
 }
 
+export interface SupplierView {
+  id: string
+  name: string
+  productCount: number
+}
+
+export interface CompanyDetails {
+  name: string
+  posName: string
+  address: string
+  phone: string
+  email: string
+  logoUrl: string
+  otherInfo: string
+}
+
+export interface DashboardInsights {
+  shortageTrend: Array<{ date: string; count: number }>
+  topSuppliers: Array<{ name: string; count: number }>
+  topProducts: Array<{ name: string; count: number }>
+}
+
+function shiftIsoDays(base: Date, offsetDays: number): string {
+  const d = new Date(base)
+  d.setDate(d.getDate() + offsetDays)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+async function resolveCurrentCompanyId(): Promise<string | null> {
+  if (!isSupabaseConfigured) return null
+  const { data: authData } = await supabase.auth.getUser()
+  const userId = authData.user?.id
+  if (!userId) return null
+  const profileRes = await supabase.from('profiles').select('company_id').eq('id', userId).maybeSingle()
+  if (profileRes.error || !profileRes.data) return null
+  const companyId = String((profileRes.data as { company_id?: unknown }).company_id ?? '').trim()
+  return companyId || null
+}
+
 function todayIso(): string {
   const d = new Date()
   const y = d.getFullYear()
@@ -106,6 +148,221 @@ export async function getProducts(): Promise<ProductView[]> {
     category: row.category === 'front' ? 'front' : 'barna',
     aliases: Array.isArray(row.aliases) ? row.aliases : [],
   }))
+}
+
+export async function getSuppliers(): Promise<SupplierView[]> {
+  if (!isSupabaseConfigured) {
+    const grouped = new Map<string, number>()
+    fromMockProducts(getProductsMock()).forEach((p) => {
+      grouped.set(p.supplierName, (grouped.get(p.supplierName) ?? 0) + 1)
+    })
+    return [...grouped.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0], 'sq-AL'))
+      .map(([name, count], idx) => ({ id: `mock-${idx}`, name, productCount: count }))
+  }
+  const { data, error } = await supabase
+    .from('suppliers')
+    .select('id,name,products(count)')
+    .order('name')
+  if (error || !data) return []
+  return data.map((row: any) => ({
+    id: String(row.id ?? ''),
+    name: String(row.name ?? ''),
+    productCount: Number(row.products?.[0]?.count ?? 0),
+  }))
+}
+
+export async function addSupplier(name: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  const supplierName = name.trim()
+  if (!supplierName) return { ok: false, message: 'Shkruaj emrin e furnitorit.' }
+  if (!isSupabaseConfigured) return { ok: true }
+  const existing = await supabase.from('suppliers').select('id').ilike('name', supplierName).limit(1).maybeSingle()
+  if (existing.data?.id) return { ok: false, message: 'Ky furnitor ekziston.' }
+  const ins = await supabase.from('suppliers').insert({ name: supplierName })
+  if (ins.error) return { ok: false, message: ins.error.message }
+  return { ok: true }
+}
+
+export async function renameSupplier(id: string, name: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  const supplierId = id.trim()
+  const supplierName = name.trim()
+  if (!supplierId) return { ok: false, message: 'ID e furnitorit mungon.' }
+  if (!supplierName) return { ok: false, message: 'Shkruaj emrin e furnitorit.' }
+  if (!isSupabaseConfigured) return { ok: true }
+  const duplicate = await supabase.from('suppliers').select('id').ilike('name', supplierName).limit(1).maybeSingle()
+  if (duplicate.data?.id && duplicate.data.id !== supplierId) {
+    return { ok: false, message: 'Ekziston furnitor me këtë emër.' }
+  }
+  const up = await supabase.from('suppliers').update({ name: supplierName }).eq('id', supplierId)
+  if (up.error) return { ok: false, message: up.error.message }
+  return { ok: true }
+}
+
+export async function deleteSupplier(id: string): Promise<{ ok: true } | { ok: false; message: string }> {
+  const supplierId = id.trim()
+  if (!supplierId) return { ok: false, message: 'ID e furnitorit mungon.' }
+  if (!isSupabaseConfigured) return { ok: true }
+  const used = await supabase.from('products').select('id').eq('supplier_id', supplierId).limit(1).maybeSingle()
+  if (used.data?.id) {
+    return { ok: false, message: 'Furnitori ka produkte aktive. Hiqi ose ndrysho furnitorin e produkteve.' }
+  }
+  const del = await supabase.from('suppliers').delete().eq('id', supplierId)
+  if (del.error) return { ok: false, message: del.error.message }
+  return { ok: true }
+}
+
+export async function getPreferredProductByName(): Promise<Record<string, string>> {
+  if (!isSupabaseConfigured) return {}
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) return {}
+  const { data, error } = await supabase
+    .from('product_supplier_preferences')
+    .select('product_name_norm,preferred_product_id')
+    .eq('company_id', companyId)
+  if (error || !data) return {}
+  const out: Record<string, string> = {}
+  for (const row of data as Array<{ product_name_norm?: unknown; preferred_product_id?: unknown }>) {
+    const key = String(row.product_name_norm ?? '').trim().toLocaleLowerCase('sq-AL')
+    const value = String(row.preferred_product_id ?? '').trim()
+    if (key && value) out[key] = value
+  }
+  return out
+}
+
+export async function setPreferredProductByName(
+  productName: string,
+  productId: string,
+  supplierId?: string
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const key = productName.trim().toLocaleLowerCase('sq-AL')
+  const value = productId.trim()
+  if (!key) return { ok: false, message: 'Emri i produktit mungon.' }
+  if (!value) return { ok: false, message: 'Produkti i preferuar mungon.' }
+  if (!isSupabaseConfigured) return { ok: true }
+  const { data: authData } = await supabase.auth.getUser()
+  const ownerId = authData.user?.id
+  const companyId = await resolveCurrentCompanyId()
+  if (!ownerId || !companyId) return { ok: false, message: 'User jo i kyçur.' }
+  const upsert = await supabase.from('product_supplier_preferences').upsert(
+    {
+      company_id: companyId,
+      owner_id: ownerId,
+      product_name_norm: key,
+      preferred_product_id: value,
+      preferred_supplier_id: supplierId ?? null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'company_id,product_name_norm' }
+  )
+  if (upsert.error) return { ok: false, message: upsert.error.message }
+  return { ok: true }
+}
+
+export async function getCompanyDetails(): Promise<CompanyDetails> {
+  const empty: CompanyDetails = { name: '', posName: '', address: '', phone: '', email: '', logoUrl: '', otherInfo: '' }
+  if (!isSupabaseConfigured) return empty
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) return empty
+  const { data: authData } = await supabase.auth.getUser()
+  const userEmail = String(authData.user?.email ?? '').trim()
+  const companyRes = await supabase.from('companies').select('name').eq('id', companyId).maybeSingle()
+  const companyName = String((companyRes.data as { name?: unknown } | null)?.name ?? '').trim()
+  const fallback: CompanyDetails = {
+    name: companyName,
+    posName: companyName,
+    address: '',
+    phone: '',
+    email: userEmail,
+    logoUrl: '',
+    otherInfo: '',
+  }
+  const { data, error } = await supabase
+    .from('company_details')
+    .select('name,pos_name,address,phone,email,logo_url,other_info')
+    .eq('company_id', companyId)
+    .maybeSingle()
+  if (error || !data) return fallback
+  const d = data as Record<string, unknown>
+  return {
+    name: String(d.name ?? '').trim() || fallback.name,
+    posName: String(d.pos_name ?? '').trim() || fallback.posName,
+    address: String(d.address ?? '').trim() || fallback.address,
+    phone: String(d.phone ?? '').trim() || fallback.phone,
+    email: String(d.email ?? '').trim() || fallback.email,
+    logoUrl: String(d.logo_url ?? '').trim() || fallback.logoUrl,
+    otherInfo: String(d.other_info ?? '').trim() || fallback.otherInfo,
+  }
+}
+
+export async function updateCompanyDetails(input: CompanyDetails): Promise<{ ok: true } | { ok: false; message: string }> {
+  if (!isSupabaseConfigured) return { ok: true }
+  const companyId = await resolveCurrentCompanyId()
+  if (!companyId) return { ok: false, message: 'User jo i kyçur.' }
+  const payload = {
+    company_id: companyId,
+    name: input.name.trim(),
+    pos_name: input.posName.trim(),
+    address: input.address.trim(),
+    phone: input.phone.trim(),
+    email: input.email.trim(),
+    logo_url: input.logoUrl.trim(),
+    other_info: input.otherInfo.trim(),
+    updated_at: new Date().toISOString(),
+  }
+  const upsert = await supabase.from('company_details').upsert(payload, { onConflict: 'company_id' })
+  if (upsert.error) return { ok: false, message: upsert.error.message }
+  return { ok: true }
+}
+
+export async function getDashboardInsights(days = 7): Promise<DashboardInsights> {
+  const safeDays = Math.max(1, Math.min(30, Math.floor(days)))
+  const baseDate = new Date()
+  const dateRange = Array.from({ length: safeDays }, (_, idx) => shiftIsoDays(baseDate, -(safeDays - 1 - idx)))
+  const emptyTrend = dateRange.map((date) => ({ date, count: 0 }))
+
+  if (!isSupabaseConfigured) {
+    const shortages = fromMockShortages(getShortagesMock())
+    const supplierMap = new Map<string, number>()
+    const productMap = new Map<string, number>()
+    for (const row of shortages) {
+      const c = Math.max(1, Number(row.addedCount ?? 1))
+      supplierMap.set(row.supplierName, (supplierMap.get(row.supplierName) ?? 0) + c)
+      productMap.set(row.productName, (productMap.get(row.productName) ?? 0) + c)
+    }
+    if (emptyTrend.length) emptyTrend[emptyTrend.length - 1].count = shortages.length
+    return {
+      shortageTrend: emptyTrend,
+      topSuppliers: [...supplierMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({ name, count })),
+      topProducts: [...productMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({ name, count })),
+    }
+  }
+
+  const sinceIso = dateRange[0]
+  const { data, error } = await supabase
+    .from('mungesat')
+    .select('entry_date,added_count,products(name,suppliers(name))')
+    .gte('entry_date', sinceIso)
+    .order('entry_date', { ascending: true })
+  if (error || !data) return { shortageTrend: emptyTrend, topSuppliers: [], topProducts: [] }
+
+  const byDay = new Map<string, number>(emptyTrend.map((r) => [r.date, 0]))
+  const bySupplier = new Map<string, number>()
+  const byProduct = new Map<string, number>()
+  for (const row of data as any[]) {
+    const day = String(row.entry_date ?? '')
+    if (!byDay.has(day)) continue
+    const count = Math.max(1, Number(row.added_count ?? 1))
+    byDay.set(day, (byDay.get(day) ?? 0) + count)
+    const supplier = String(row.products?.suppliers?.name ?? 'Pa furnitor').trim() || 'Pa furnitor'
+    const product = String(row.products?.name ?? 'Produkt').trim() || 'Produkt'
+    bySupplier.set(supplier, (bySupplier.get(supplier) ?? 0) + count)
+    byProduct.set(product, (byProduct.get(product) ?? 0) + count)
+  }
+  return {
+    shortageTrend: emptyTrend.map((r) => ({ date: r.date, count: byDay.get(r.date) ?? 0 })),
+    topSuppliers: [...bySupplier.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({ name, count })),
+    topProducts: [...byProduct.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([name, count]) => ({ name, count })),
+  }
 }
 
 export async function addProduct(input: {
