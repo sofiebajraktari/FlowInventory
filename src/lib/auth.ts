@@ -55,13 +55,6 @@ async function getCurrentSession(): Promise<Session | null> {
   return data.session ?? null
 }
 
-function setAuthNotice(value: 'inactive-user' | 'session-conflict'): void {
-  try {
-    sessionStorage.setItem(AUTH_NOTICE_KEY, value)
-  } catch {
-  }
-}
-
 export function takeAuthNotice(): string {
   try {
     const value = sessionStorage.getItem(AUTH_NOTICE_KEY) ?? ''
@@ -98,20 +91,6 @@ async function resolveLoginEmail(identifier: string): Promise<string> {
   }
 
   throw new Error(lookup.error.message || 'Kyçja dështoi.')
-}
-
-function mapSessionLockError(error: unknown): string {
-  const message = typeof error === 'object' && error && 'message' in error ? String((error as any).message ?? '') : ''
-  const lower = message.toLowerCase()
-  if (lower.includes('inactive_user')) return 'Ky përdorues është joaktiv. Kontakto administratorin.'
-  if (lower.includes('profile_not_found')) return 'Profili i përdoruesit mungon.'
-  if (lower.includes('invalid_session_id')) return 'Sesioni i kyçjes nuk u verifikua.'
-  return message || 'Verifikimi i sesionit dështoi.'
-}
-
-async function claimSessionId(sessionId: string): Promise<void> {
-  const claim = await supabase.rpc('claim_active_session', { p_session_id: sessionId })
-  if (claim.error) throw new Error(mapSessionLockError(claim.error))
 }
 
 async function ensureProfileAfterLogin(): Promise<Profile | null> {
@@ -169,50 +148,15 @@ export async function signIn(identifier: string, password: string): Promise<Prof
 }
 
 export async function claimCurrentSessionOwnership(): Promise<void> {
+  // Multi-device login enabled:
+  // do not claim/lock a single active session and do not sign out other devices.
   requireSupabase()
-  const session = await getCurrentSession()
-  if (!session) throw new Error('Sesioni i kyçjes mungon.')
-  const sessionId = getSessionIdFromSession(session)
-  if (!sessionId) throw new Error('Sesioni aktual nuk ka session_id valid.')
-  await claimSessionId(sessionId)
-  const { error } = await supabase.auth.signOut({ scope: 'others' } as any)
-  if (error) throw new Error(error.message || 'Mbyllja e sesioneve të tjera dështoi.')
 }
 
 export async function ensureCurrentSessionIsActive(): Promise<boolean> {
   if (!isSupabaseConfigured) return true
   const session = await getCurrentSession()
-  if (!session) return false
-  const sessionId = getSessionIdFromSession(session)
-  if (!sessionId) return true
-
-  const stateRes = await supabase.rpc('get_my_session_state')
-  if (stateRes.error) throw new Error(stateRes.error.message || 'Leximi i sesionit aktiv dështoi.')
-
-  const state =
-    stateRes.data && typeof stateRes.data === 'object'
-      ? (stateRes.data as { is_active?: unknown; active_session_id?: unknown } | null)
-      : null
-
-  if (!state) return true
-
-  if (state.is_active === false) {
-    setAuthNotice('inactive-user')
-    await signOut('local')
-    return false
-  }
-
-  const activeSessionId = String(state.active_session_id ?? '').trim()
-  if (!activeSessionId) {
-    await claimSessionId(sessionId)
-    return true
-  }
-
-  if (activeSessionId === sessionId) return true
-
-  setAuthNotice('session-conflict')
-  await signOut('local')
-  return false
+  return Boolean(session)
 }
 
 export async function signInWithGoogle(role: UserRole): Promise<void> {
