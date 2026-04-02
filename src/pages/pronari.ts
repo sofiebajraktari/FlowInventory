@@ -1,3 +1,4 @@
+import type { jsPDF } from 'jspdf'
 import { getProfile, signOut } from '../lib/auth.js'
 import { isSupabaseConfigured, supabase } from '../lib/supabase.js'
 import { getMockUser } from '../types.js'
@@ -65,6 +66,17 @@ type OwnerSection =
   | 'profile'
   | 'kompania'
   | 'ekipa'
+
+type OwnerPageHandle = {
+  role: 'OWNER' | 'MANAGER' | 'WORKER'
+  section: OwnerSection
+  switchSection: (nextSection: OwnerSection) => void
+  destroy: () => void
+}
+
+type OwnerContainerWithHandle = HTMLElement & {
+  __flowOwnerHandle?: OwnerPageHandle
+}
 
 function readStoredShortageSort(): 'supplier' | 'name' {
   try {
@@ -181,9 +193,8 @@ export function renderPronari(
   routeSection = 'dashboard',
   currentRole: 'OWNER' | 'MANAGER' | 'WORKER' = 'OWNER'
 ): void {
-  const canSeeSettings = currentRole === 'OWNER'
-  const canAccessOwnerOnlySections = currentRole === 'OWNER'
-  const section: OwnerSection =
+  const host = container as OwnerContainerWithHandle
+  const normalizedSection: OwnerSection =
     routeSection === 'dashboard' ||
     routeSection === 'mungesat' ||
     routeSection === 'porosite' ||
@@ -194,7 +205,21 @@ export function renderPronari(
     routeSection === 'ekipa'
       ? routeSection
       : 'dashboard'
-  const active = (key: OwnerSection): string => (section === key ? 'premium-nav-link active' : 'premium-nav-link')
+  const existingHandle = host.__flowOwnerHandle
+  if (existingHandle) {
+    if (container.querySelector('#owner-shell') && existingHandle.role === currentRole) {
+      existingHandle.switchSection(normalizedSection)
+      return
+    }
+    existingHandle.destroy()
+    delete host.__flowOwnerHandle
+  }
+
+  const canSeeSettings = currentRole === 'OWNER'
+  const canAccessOwnerOnlySections = currentRole === 'OWNER'
+  let currentSection: OwnerSection = normalizedSection
+  const active = (key: OwnerSection): string =>
+    currentSection === key ? 'premium-nav-link active' : 'premium-nav-link'
   type ImportRow = {
     name: string
     supplier: string
@@ -333,6 +358,45 @@ export function renderPronari(
     sessionMode: isSupabaseConfigured ? 'Supabase' : 'Demo',
   }
   let activeCompanyId = ''
+  const needsDashboardInsights = (section: OwnerSection): boolean => section === 'dashboard'
+  const needsShortages = (section: OwnerSection): boolean => section === 'dashboard' || section === 'mungesat'
+  const needsProducts = (section: OwnerSection): boolean =>
+    section === 'dashboard' || section === 'mungesat' || section === 'import'
+  const needsRecentOrders = (section: OwnerSection): boolean =>
+    section === 'dashboard' || section === 'mungesat' || section === 'porosite'
+  const needsSupplierData = (section: OwnerSection): boolean => section === 'import'
+  const needsTeamUsers = (section: OwnerSection): boolean => canSeeSettings && (section === 'settings' || section === 'ekipa')
+  const getSectionLabel = (section: OwnerSection): string => {
+    if (section === 'dashboard') return 'Dashboard'
+    if (section === 'mungesat') return 'Mungesat'
+    if (section === 'porosite') return 'Porositë'
+    if (section === 'kompania') return 'Kompania'
+    if (section === 'ekipa') return 'Ekipa'
+    if (section === 'profile') return 'Profile'
+    if (section === 'settings') return 'Settings'
+    return 'Import'
+  }
+  const getSectionTitle = (section: OwnerSection): string => {
+    if (section === 'porosite') return 'Porositë të ndara sipas furnitorit'
+    if (section === 'kompania') return 'Detajet e kompanisë'
+    if (section === 'ekipa') return 'Ekipa e kompanisë'
+    if (section === 'profile') return 'Profili i llogarisë'
+    if (section === 'settings') return 'Settings'
+    if (section === 'import') return 'Menaxho importin dhe produktet'
+    return ''
+  }
+  let hasLoadedShortages = false
+  let hasLoadedProducts = false
+  let hasLoadedRecentOrders = false
+  let hasLoadedDashboardInsights = false
+  let hasLoadedSupplierData = false
+  let hasLoadedTeamUsers = false
+  const initialShouldLoadDashboardInsights = needsDashboardInsights(currentSection)
+  const initialShouldLoadShortages = needsShortages(currentSection)
+  const initialShouldLoadProducts = needsProducts(currentSection)
+  const initialShouldLoadRecentOrders = needsRecentOrders(currentSection)
+  const initialShouldLoadSupplierData = needsSupplierData(currentSection)
+  const initialShouldLoadTeamUsers = needsTeamUsers(currentSection)
 
   function readSuggestedQtyDraft(): Record<string, number> {
     try {
@@ -372,16 +436,33 @@ export function renderPronari(
   }
 
   async function reloadShortages(): Promise<void> {
-    shortages = applySuggestedQtyDraft(await getTodayShortages())
+    shortages = applySuggestedQtyDraft(await getTodayShortages(products.length ? products : undefined))
+    hasLoadedShortages = true
     refreshUI()
   }
 
   async function reloadDashboardInsights(): Promise<void> {
     try {
-      dashboardInsights = await getDashboardInsights(dashboardRangeDays)
+      dashboardInsights = await getDashboardInsights(dashboardRangeDays, products.length ? products : undefined)
     } catch {
       dashboardInsights = buildEmptyDashboardInsights(dashboardRangeDays)
     }
+    hasLoadedDashboardInsights = true
+    refreshUI()
+  }
+
+  async function ensureShortagesReadyForOrders(): Promise<void> {
+    if (hasLoadedShortages) return
+    const productRowsPromise =
+      hasLoadedProducts
+        ? Promise.resolve(products)
+        : getProducts().then((rows) => {
+            products = rows
+            hasLoadedProducts = true
+            return rows
+          })
+    shortages = applySuggestedQtyDraft(await getTodayShortages(productRowsPromise))
+    hasLoadedShortages = true
     refreshUI()
   }
 
@@ -593,8 +674,8 @@ export function renderPronari(
       return
     }
     try {
-      const { data: userData } = await supabase.auth.getUser()
-      const user = userData.user
+      const { data: sessionData } = await supabase.auth.getSession()
+      const user = sessionData.session?.user
       if (!user) {
         activeCompanyId = ''
         accountInfo = {
@@ -609,30 +690,26 @@ export function renderPronari(
         }
         return
       }
-      let role = 'OWNER'
+      let role = String(user.user_metadata?.role ?? '').trim().toUpperCase()
       let profileUsername = ''
-      try {
-        const profile = await getProfile()
-        if (profile?.role) role = String(profile.role)
-      } catch {
-      }
-      const metadataRole = String(user.user_metadata?.role ?? '').trim().toUpperCase()
-      if (!role && (metadataRole === 'OWNER' || metadataRole === 'MANAGER' || metadataRole === 'WORKER')) {
-        role = metadataRole
-      }
       const provider = user.app_metadata?.provider ?? user.identities?.[0]?.provider ?? 'email'
       try {
-        const companyRes = await supabase
+        const profileRes = await supabase
           .from('profiles')
-          .select('company_id,username')
+          .select('company_id,username,role')
           .eq('id', user.id)
           .maybeSingle()
-        if (!companyRes.error && companyRes.data) {
-          activeCompanyId = String((companyRes.data as { company_id?: unknown }).company_id ?? '').trim()
-          profileUsername = String((companyRes.data as { username?: unknown }).username ?? '').trim()
+        if (!profileRes.error && profileRes.data) {
+          activeCompanyId = String((profileRes.data as { company_id?: unknown }).company_id ?? '').trim()
+          profileUsername = String((profileRes.data as { username?: unknown }).username ?? '').trim()
+          const profileRole = String((profileRes.data as { role?: unknown }).role ?? '').trim().toUpperCase()
+          if (profileRole === 'OWNER' || profileRole === 'MANAGER' || profileRole === 'WORKER') {
+            role = profileRole
+          }
         }
       } catch {
       }
+      if (role !== 'OWNER' && role !== 'MANAGER' && role !== 'WORKER') role = 'OWNER'
       const usernameMeta = String(user.user_metadata?.username ?? '').trim()
       const resolvedUsername = usernameMeta || profileUsername || ''
       const fallbackName = resolvedUsername || 'Perdorues'
@@ -641,7 +718,7 @@ export function renderPronari(
         lastName: String(user.user_metadata?.last_name ?? ''),
         username: resolvedUsername,
         email: String(user.email ?? '').trim() || '—',
-        role: role || 'OWNER',
+        role,
         userId: String(user.id ?? '').trim() || '—',
         provider: String(provider),
         sessionMode: 'Supabase',
@@ -905,7 +982,6 @@ export function renderPronari(
     window.setTimeout(() => toast.remove(), 1800)
   }
 
-  const getSafeUsername = (value: string): string => String(value ?? '').trim() || 'perdorues'
   const getVisibleUserName = (value: string): string => String(value ?? '').trim() || 'Përdorues'
   const getVisibleLoginLabel = (value: string): string =>
     String(value ?? '').trim() ? `Username: ${String(value ?? '').trim()}` : 'Username i paplotësuar'
@@ -1877,9 +1953,9 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
   }
 
   function renderOrdersPanel(): string {
-    const ordersToRender = section === 'mungesat' ? generatedOrders : showAllOrders ? allOrders : generatedOrders
+    const ordersToRender = currentSection === 'mungesat' ? generatedOrders : showAllOrders ? allOrders : generatedOrders
     if (!ordersToRender.length) {
-      if (section === 'mungesat') {
+      if (currentSection === 'mungesat') {
         return `<div class="premium-empty">
           <div class="premium-empty-title">Nuk ka porosi të gjeneruara për sot</div>
           <p class="premium-empty-copy">Kliko «Gjenero porositë e ditës së sotme» për t'i krijuar porositë.</p>
@@ -2252,11 +2328,6 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
         const canManage = !isSelf
         const safeId = u.id.replace(/[^a-zA-Z0-9_-]/g, '')
         const rowId = `owner-user-row-${safeId}`
-        const usernameInputId = `owner-user-username-${safeId}`
-        const roleInputId = `owner-user-role-${safeId}`
-        const activeInputId = `owner-user-active-${safeId}`
-        const saveBtnId = `owner-user-save-${safeId}`
-        const cancelBtnId = `owner-user-cancel-${safeId}`
         const editBtnId = `owner-user-edit-${safeId}`
         const roleBadgeClass =
           role === 'OWNER'
@@ -2825,7 +2896,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     if (statShortages) statShortages.textContent = String(shortages.length)
     if (statOrders)
       statOrders.textContent = String(
-        section === 'mungesat' ? generatedOrders.length : showAllOrders ? allOrders.length : generatedOrders.length
+        currentSection === 'mungesat' ? generatedOrders.length : showAllOrders ? allOrders.length : generatedOrders.length
       )
     if (statUrgent) statUrgent.textContent = String(shortages.filter((s) => s.urgent).length)
     if (sortHint) sortHint.textContent = sortBy === 'name' ? 'Renditur sipas emrit' : 'Renditur sipas furnitorit'
@@ -2916,8 +2987,8 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
           </div>
           <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">NAVIGIMI</p>
           <nav class="space-y-1 text-sm">
-            <a href="#/pronari" class="${active('dashboard')}"><span class="premium-nav-dot"></span>Dashboard</a>
-            <a href="#/pronari/mungesat" class="${active('mungesat')}"><span class="premium-nav-dot"></span>Mungesat</a>
+            <a href="#/pronari" data-owner-nav="dashboard" class="${active('dashboard')}"><span class="premium-nav-dot"></span>Dashboard</a>
+            <a href="#/pronari/mungesat" data-owner-nav="mungesat" class="${active('mungesat')}"><span class="premium-nav-dot"></span>Mungesat</a>
             <a href="#/porosite" class="${active('porosite')}"><span class="premium-nav-dot"></span>Porositë</a>
             ${canAccessOwnerOnlySections ? `<a href="#/import" class="${active('import')}"><span class="premium-nav-dot"></span>Import</a>` : ''}
             ${canAccessOwnerOnlySections ? '<p class="pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">KOMPANIA</p>' : ''}
@@ -2958,48 +3029,48 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
         <img id="owner-logo-reopen-img" src="${companyBrand.logoUrl}" alt="${companyBrand.name}" class="h-6 w-6 rounded-full object-cover" onerror="this.onerror=null;this.src='${DEFAULT_BRAND_LOGO}'" />
       </button>
 
-      <main class="premium-main px-4 py-4 md:px-6 md:py-5">
+      <main class="premium-main owner-main px-4 py-4 md:px-6 md:py-5">
         <header class="premium-header relative z-30 mb-5 overflow-visible border-b border-slate-200 pb-4">
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <div class="min-w-0 flex flex-1 items-center gap-2">
+          <div class="owner-header-layout flex flex-wrap items-center justify-between gap-3">
+            <div class="owner-header-title min-w-0 flex flex-1 items-center gap-2">
               <div class="min-w-0">
-              <p class="text-sm font-semibold uppercase tracking-wide text-slate-600">${
-                section === 'dashboard'
+              <p id="owner-header-eyebrow" class="text-sm font-semibold uppercase tracking-wide text-slate-600">${
+                currentSection === 'dashboard'
                   ? 'Dashboard'
-                  : section === 'mungesat'
+                  : currentSection === 'mungesat'
                     ? 'Mungesat'
-                    : section === 'porosite'
+                    : currentSection === 'porosite'
                       ? 'Porositë'
-                      : section === 'kompania'
+                      : currentSection === 'kompania'
                         ? 'Kompania'
-                        : section === 'ekipa'
+                        : currentSection === 'ekipa'
                           ? 'Ekipa'
-                      : section === 'profile'
+                      : currentSection === 'profile'
                         ? 'Profile'
-                        : section === 'settings'
+                        : currentSection === 'settings'
                           ? 'Settings'
                           : 'Import'
               }</p>
               ${
-                section === 'mungesat' || section === 'dashboard'
+                currentSection === 'mungesat' || currentSection === 'dashboard'
                   ? ''
-                  : `<h1 class="text-xl md:text-2xl font-semibold tracking-tight text-slate-900">${
-                      section === 'porosite'
+                  : `<h1 id="owner-header-title" class="text-xl md:text-2xl font-semibold tracking-tight text-slate-900">${
+                      currentSection === 'porosite'
                         ? 'Porositë të ndara sipas furnitorit'
-                        : section === 'kompania'
+                        : currentSection === 'kompania'
                           ? 'Detajet e kompanisë'
-                          : section === 'ekipa'
+                          : currentSection === 'ekipa'
                             ? 'Ekipa e kompanisë'
-                        : section === 'profile'
+                        : currentSection === 'profile'
                           ? 'Profili i llogarisë'
-                          : section === 'settings'
+                          : currentSection === 'settings'
                             ? 'Settings'
                         : 'Menaxho importin dhe produktet'
                     }</h1>`
               }
               </div>
             </div>
-            <div class="w-full md:flex-1 md:flex md:justify-center">
+            <div class="owner-header-search-wrap w-full md:flex-1 md:flex md:justify-center">
               <div class="flex w-full max-w-2xl items-center gap-2">
                 <div class="premium-top-search flex-1">
                   <span class="premium-top-search-icon">${iconSearch}</span>
@@ -3029,7 +3100,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                 Ngarko file (Excel/CSV)
               </button>
               <input id="import-csv-input" type="file" accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" class="hidden" />
-              <button type="button" id="btn-generate-orders" class="${section === 'porosite' ? 'premium-btn-primary inline-flex' : 'hidden'} owner-generate-btn max-w-full flex-wrap items-center justify-center gap-2 rounded-xl px-3 py-2 text-[11px] font-semibold sm:px-4 sm:text-xs">
+              <button type="button" id="btn-generate-orders" class="${currentSection === 'porosite' ? 'premium-btn-primary inline-flex' : 'hidden'} owner-generate-btn max-w-full flex-wrap items-center justify-center gap-2 rounded-xl px-3 py-2 text-[11px] font-semibold sm:px-4 sm:text-xs">
                 Gjenero porositë sipas furnitorit
               </button>
               <div class="owner-header-actions flex items-center justify-end gap-2">
@@ -3063,7 +3134,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
           </div>
         </header>
 
-        <section class="${section === 'dashboard' ? '' : 'hidden '}relative z-0 mb-6 grid gap-3 md:grid-cols-4">
+        <section id="owner-dashboard-kpis" class="${currentSection === 'dashboard' ? '' : 'hidden '}owner-dashboard-kpis relative z-0 mb-6 grid gap-3 md:grid-cols-4">
           <div class="premium-kpi p-3">
             <div class="ui-kpi-icon">${iconKpiShortage}</div>
             <p class="mt-2 text-[11px] uppercase tracking-wide text-slate-500">Kontrolli</p>
@@ -3091,10 +3162,10 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
         </section>
 
         <section class="relative z-0 grid gap-4">
-          <div id="owner-dashboard-panel" class="${section === 'dashboard' ? '' : 'hidden '}space-y-3">
+          <div id="owner-dashboard-panel" class="${currentSection === 'dashboard' ? '' : 'hidden '}space-y-3">
             ${renderDashboardPanel()}
           </div>
-          <div class="${section === 'mungesat' ? '' : 'hidden '}premium-card p-4 md:p-5">
+          <div id="owner-shortages-panel" class="${currentSection === 'mungesat' ? '' : 'hidden '}premium-card p-4 md:p-5">
             <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
               <div>
                 <h2 class="text-base font-semibold text-slate-900">Lista live e mungesave për sot</h2>
@@ -3107,7 +3178,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                 </select>
               </div>
             </div>
-            <form id="owner-shortage-add-form" class="mb-3 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[1fr_auto_1fr_auto]">
+            <form id="owner-shortage-add-form" class="owner-shortage-form mb-3 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[1fr_auto_1fr_auto]">
               <input id="owner-shortage-add-product" list="owner-shortage-product-options" type="text" placeholder="Shto mungesë: produkt — furnitor" class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none" />
               <input id="owner-shortage-add-product-id" type="hidden" />
               <datalist id="owner-shortage-product-options">
@@ -3145,16 +3216,16 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
             </p>
           </div>
 
-          <div class="${section === 'mungesat' || section === 'porosite' ? '' : 'hidden '}space-y-3">
+          <div id="owner-orders-wrapper" class="${currentSection === 'mungesat' || currentSection === 'porosite' ? '' : 'hidden '}space-y-3">
             <div id="owner-orders-panel" class="premium-card p-4">
               <div class="flex items-center justify-between mb-2">
                 <h2 class="text-base font-semibold text-slate-900">Porositë të ndara sipas furnitorit</h2>
-                <button data-action="show-all" class="${section === 'porosite' ? '' : 'hidden '}premium-btn-ghost rounded-lg px-2.5 py-1 text-[11px]">${
+                <button id="owner-show-all-orders" data-action="show-all" class="${currentSection === 'porosite' ? '' : 'hidden '}premium-btn-ghost rounded-lg px-2.5 py-1 text-[11px]">${
                   showAllOrders ? 'Shfaq vetëm të rejat' : 'Shiko të gjitha'
                 }</button>
               </div>
               <div id="owner-orders-list" class="space-y-2">${renderOrdersPanel()}</div>
-              <div class="${section === 'mungesat' ? '' : 'hidden '}mt-3">
+              <div id="owner-generate-today-wrap" class="${currentSection === 'mungesat' ? '' : 'hidden '}mt-3">
                 <button
                   type="button"
                   id="btn-generate-orders-today"
@@ -3165,14 +3236,14 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
               </div>
             </div>
           </div>
-          <div class="${section === 'import' ? '' : 'hidden '}space-y-3">
+          <div id="owner-import-panel" class="${currentSection === 'import' ? '' : 'hidden '}space-y-3">
               <div class="premium-card p-4">
                 <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
                   <div>
                     <h3 class="text-base font-semibold text-slate-900">Menaxho importin</h3>
                     <p class="text-[11px] text-slate-500">Zgjidh mënyrën: shtim manual ose import masiv nga file.</p>
                   </div>
-                  <div class="inline-flex items-center gap-2">
+                  <div class="owner-import-tabs inline-flex items-center gap-2">
                     <button type="button" id="owner-import-tab-manual" data-action="switch-import-tab" data-tab="manual" class="premium-btn-ghost rounded-lg px-3 py-1.5 text-xs font-semibold">
                       Manual
                     </button>
@@ -3183,7 +3254,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                 </div>
 
                 <div id="owner-import-manual-panel" class="${String(importTab) === 'manual' ? '' : 'hidden'}">
-                  <form id="owner-product-form" class="grid gap-2 md:grid-cols-2">
+                  <form id="owner-product-form" class="owner-product-form grid gap-2 md:grid-cols-2">
                     <input id="owner-product-name" type="text" placeholder="Emri i barit (p.sh. Paracetamol 500mg)" class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none md:col-span-2" />
                     <input id="owner-product-supplier" type="text" list="owner-supplier-options" placeholder="Furnitori (p.sh. TrePharm)" class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none" />
                     <select id="owner-product-category" class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs focus:outline-none">
@@ -3213,7 +3284,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                     <h4 class="text-sm font-semibold text-slate-900">Suppliers</h4>
                     <span class="text-[11px] text-slate-500">Total: <span id="owner-suppliers-count">0</span></span>
                   </div>
-                  <form id="owner-supplier-form" class="mb-2 flex flex-col gap-2 sm:flex-row">
+                  <form id="owner-supplier-form" class="owner-supplier-form mb-2 flex flex-col gap-2 sm:flex-row">
                     <input id="owner-supplier-name" type="text" placeholder="Shto furnitor të ri" class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none" />
                     <button type="submit" class="premium-btn-primary rounded-lg px-3 py-1.5 text-xs font-semibold whitespace-nowrap">Add supplier</button>
                   </form>
@@ -3224,7 +3295,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                   <h3 class="text-base font-semibold text-slate-900">Produkte ekzistuese</h3>
                   <span class="text-[11px] text-slate-500">Shfaqur: <span id="owner-products-count">${products.length}</span></span>
                 </div>
-                <div class="mb-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                <div class="owner-products-filters mb-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                   <label class="flex items-center gap-1.5 text-[11px] text-slate-600 whitespace-nowrap">
                     <span class="text-slate-500">Shfaq:</span>
                     <select id="owner-products-category-filter" class="premium-input rounded-lg px-2 py-1 text-xs focus:outline-none max-w-44" aria-label="Filtro sipas kategorisë së produktit">
@@ -3234,7 +3305,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                     </select>
                   </label>
                 </div>
-                <div class="mb-2 grid gap-2 md:grid-cols-[1fr_auto]">
+                <div class="owner-products-toolbar mb-2 grid gap-2 md:grid-cols-[1fr_auto]">
                   <input id="owner-products-search" type="text" placeholder="Kërko sipas emrit, furnitorit ose emrave alternativë..." class="premium-input w-full rounded-lg px-2.5 py-1.5 text-xs placeholder:text-slate-400 focus:outline-none" />
                   <select id="owner-products-sort" class="premium-input rounded-lg px-2.5 py-1.5 text-xs focus:outline-none">
                     <option value="name">Rendit: Emri</option>
@@ -3245,16 +3316,16 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
                 <ul id="owner-products-list" class="max-h-56 overflow-auto pr-1"></ul>
               </div>
           </div>
-          <div id="owner-profile-panel" class="${section === 'profile' ? '' : 'hidden '}space-y-3">
+          <div id="owner-profile-panel" class="${currentSection === 'profile' ? '' : 'hidden '}space-y-3">
             ${renderProfilePanel()}
           </div>
-          <div id="owner-settings-panel" class="${section === 'settings' ? '' : 'hidden '}space-y-3">
+          <div id="owner-settings-panel" class="${currentSection === 'settings' ? '' : 'hidden '}space-y-3">
             ${renderSettingsPanel()}
           </div>
-          <div id="owner-company-panel" class="${section === 'kompania' ? '' : 'hidden '}space-y-3">
+          <div id="owner-company-panel" class="${currentSection === 'kompania' ? '' : 'hidden '}space-y-3">
             ${renderCompanyPanel()}
           </div>
-          <div id="owner-team-panel" class="${section === 'ekipa' ? '' : 'hidden '}space-y-3">
+          <div id="owner-team-panel" class="${currentSection === 'ekipa' ? '' : 'hidden '}space-y-3">
             ${renderTeamPanel()}
           </div>
         </section>
@@ -3272,6 +3343,193 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
   const shell = document.getElementById('owner-shell') as HTMLElement | null
   const sidebar = document.getElementById('owner-sidebar') as HTMLElement | null
   const sidebarBackdrop = document.getElementById('owner-sidebar-backdrop') as HTMLDivElement | null
+  const disposers: Array<() => void> = []
+  const addWindowListener = (
+    type: keyof WindowEventMap,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions
+  ): void => {
+    window.addEventListener(type, listener, options)
+    disposers.push(() => window.removeEventListener(type, listener, options))
+  }
+  const addDocumentListener = (
+    type: keyof DocumentEventMap,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions
+  ): void => {
+    document.addEventListener(type, listener, options)
+    disposers.push(() => document.removeEventListener(type, listener, options))
+  }
+  const navHrefBySection: Partial<Record<OwnerSection, string>> = {
+    dashboard: '#/pronari',
+    mungesat: '#/pronari/mungesat',
+    porosite: '#/porosite',
+    import: '#/import',
+    settings: '#/settings',
+    kompania: '#/kompania',
+    ekipa: '#/ekipa',
+  }
+  const generateButtonClass =
+    'owner-generate-btn max-w-full flex-wrap items-center justify-center gap-2 rounded-xl px-3 py-2 text-[11px] font-semibold sm:px-4 sm:text-xs'
+  const showAllButtonClass = 'premium-btn-ghost rounded-lg px-2.5 py-1 text-[11px]'
+
+  const toggleSectionVisibility = (elementId: string, visible: boolean): void => {
+    const element = document.getElementById(elementId)
+    if (element) element.classList.toggle('hidden', !visible)
+  }
+
+  const updateSectionHeader = (): void => {
+    const eyebrow = document.getElementById('owner-header-eyebrow')
+    if (eyebrow) eyebrow.textContent = getSectionLabel(currentSection)
+    const titleText = getSectionTitle(currentSection)
+    const titleHost = eyebrow?.parentElement ?? document.querySelector('.owner-header-title .min-w-0')
+    let title = document.getElementById('owner-header-title') as HTMLHeadingElement | null
+    if (titleText) {
+      if (!title && titleHost) {
+        title = document.createElement('h1')
+        title.id = 'owner-header-title'
+        title.className = 'text-xl md:text-2xl font-semibold tracking-tight text-slate-900'
+        titleHost.appendChild(title)
+      }
+      if (title) {
+        title.textContent = titleText
+        title.classList.remove('hidden')
+      }
+      return
+    }
+    if (title) {
+      title.textContent = ''
+      title.classList.add('hidden')
+    }
+  }
+
+  const applySectionUI = (): void => {
+    updateSectionHeader()
+    ;(Object.entries(navHrefBySection) as Array<[OwnerSection, string]>).forEach(([key, href]) => {
+      const navLink = document.querySelector(`#owner-sidebar a[href="${href}"]`) as HTMLAnchorElement | null
+      if (navLink) navLink.className = active(key)
+    })
+    toggleSectionVisibility('owner-dashboard-kpis', currentSection === 'dashboard')
+    toggleSectionVisibility('owner-dashboard-panel', currentSection === 'dashboard')
+    toggleSectionVisibility('owner-shortages-panel', currentSection === 'mungesat')
+    toggleSectionVisibility('owner-orders-wrapper', currentSection === 'mungesat' || currentSection === 'porosite')
+    toggleSectionVisibility('owner-import-panel', currentSection === 'import')
+    toggleSectionVisibility('owner-profile-panel', currentSection === 'profile')
+    toggleSectionVisibility('owner-settings-panel', currentSection === 'settings')
+    toggleSectionVisibility('owner-company-panel', currentSection === 'kompania')
+    toggleSectionVisibility('owner-team-panel', currentSection === 'ekipa')
+    toggleSectionVisibility('owner-generate-today-wrap', currentSection === 'mungesat')
+    const generateBtn = document.getElementById('btn-generate-orders') as HTMLButtonElement | null
+    if (generateBtn) {
+      generateBtn.className = `${currentSection === 'porosite' ? 'premium-btn-primary inline-flex' : 'hidden'} ${generateButtonClass}`
+    }
+    const showAllBtn = document.getElementById('owner-show-all-orders') as HTMLButtonElement | null
+    if (showAllBtn) {
+      showAllBtn.className = `${currentSection === 'porosite' ? '' : 'hidden '}${showAllButtonClass}`.trim()
+    }
+  }
+
+  const ensureSectionData = async (nextSection: OwnerSection): Promise<void> => {
+    const tasks: Array<Promise<void>> = []
+    const productRowsPromise =
+      needsProducts(nextSection) && !hasLoadedProducts
+        ? getProducts().then((rows) => {
+            products = rows
+            hasLoadedProducts = true
+            return rows
+          })
+        : null
+
+    if (needsShortages(nextSection) && !hasLoadedShortages) {
+      tasks.push(
+        (async () => {
+          const productInput = productRowsPromise ?? (hasLoadedProducts ? products : undefined)
+          shortages = applySuggestedQtyDraft(await getTodayShortages(productInput ?? undefined))
+          hasLoadedShortages = true
+        })()
+      )
+    }
+    if (needsRecentOrders(nextSection) && !hasLoadedRecentOrders) {
+      tasks.push(
+        (async () => {
+          allOrders = await getRecentOrders()
+          hasLoadedRecentOrders = true
+        })()
+      )
+    }
+    if (needsDashboardInsights(nextSection) && !hasLoadedDashboardInsights) {
+      tasks.push(
+        (async () => {
+          try {
+            const productInput = productRowsPromise ?? (hasLoadedProducts ? products : undefined)
+            dashboardInsights = await getDashboardInsights(dashboardRangeDays, productInput ?? undefined)
+          } catch {
+            dashboardInsights = buildEmptyDashboardInsights(dashboardRangeDays)
+          }
+          hasLoadedDashboardInsights = true
+        })()
+      )
+    }
+    if (needsSupplierData(nextSection) && !hasLoadedSupplierData) {
+      tasks.push(
+        (async () => {
+          const [supplierRows, preferredMap] = await Promise.all([getSuppliers(), getPreferredProductByName()])
+          suppliers = supplierRows
+          preferredProductByName = preferredMap
+          hasLoadedSupplierData = true
+        })()
+      )
+    }
+    if (needsTeamUsers(nextSection) && !hasLoadedTeamUsers && !teamLoading) {
+      tasks.push(
+        (async () => {
+          teamLoading = true
+          refreshUI()
+          try {
+            teamUsers = await loadTeamUsers()
+            teamLoadError = ''
+            hasLoadedTeamUsers = true
+          } catch (err) {
+            teamLoadError = err instanceof Error ? err.message : 'Nuk u ngarkua ekipa.'
+          } finally {
+            teamLoading = false
+          }
+        })()
+      )
+    }
+
+    if (!tasks.length) return
+    await Promise.all(tasks)
+    refreshUI()
+  }
+
+  const destroy = (): void => {
+    while (disposers.length > 0) {
+      const dispose = disposers.pop()
+      try {
+        dispose?.()
+      } catch {
+      }
+    }
+    container.onclick = null
+    document.body.classList.remove('overflow-hidden')
+  }
+
+  const switchSection = (nextSection: OwnerSection): void => {
+    if (currentSection === nextSection) return
+    currentSection = nextSection
+    if (host.__flowOwnerHandle) host.__flowOwnerHandle.section = nextSection
+    applySectionUI()
+    refreshUI()
+    void ensureSectionData(nextSection)
+  }
+
+  host.__flowOwnerHandle = {
+    role: currentRole,
+    section: currentSection,
+    switchSection,
+    destroy,
+  }
 
   const syncNavReopenVisibility = (): void => {
     if (!shell || !sidebar || !navLogoReopen) return
@@ -3310,7 +3568,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
   })
   navLogoReopen?.addEventListener('click', () => setSidebarOpen(true))
   sidebarBackdrop?.addEventListener('click', () => setSidebarOpen(false))
-  window.addEventListener('resize', () => {
+  const handleWindowResize = (): void => {
     const isDesktop = window.matchMedia('(min-width: 768px)').matches
     if (isDesktop) {
       sidebar?.classList.remove('drawer-open')
@@ -3318,8 +3576,10 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       document.body.classList.remove('overflow-hidden')
     }
     syncNavReopenVisibility()
-  })
+  }
+  addWindowListener('resize', handleWindowResize)
   syncNavReopenVisibility()
+  applySectionUI()
 
   accountMenuBtn?.addEventListener('click', (e) => {
     e.stopPropagation()
@@ -3334,13 +3594,14 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     window.location.hash = '#/settings'
   })
   accountLogout?.addEventListener('click', () => signOut())
-  document.addEventListener('click', (e) => {
+  const handleDocumentClick = (e: MouseEvent): void => {
     if (!accountMenu || !accountMenuBtn) return
     const target = e.target as Node
     if (!accountMenu.contains(target) && !accountMenuBtn.contains(target)) {
       accountMenu.classList.add('hidden')
     }
-  })
+  }
+  addDocumentListener('click', handleDocumentClick as EventListener)
 
   const searchInput = document.getElementById('owner-search') as HTMLInputElement | null
   const topSearchInput = document.getElementById('owner-top-search') as HTMLInputElement | null
@@ -3538,7 +3799,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
         Boolean(ownerShortageAddUrgentInput?.checked),
         (ownerShortageAddNoteInput?.value ?? '').trim()
       )
-      shortages = applySuggestedQtyDraft(await getTodayShortages())
+      shortages = applySuggestedQtyDraft(await getTodayShortages(products.length ? products : undefined))
       ownerShortageAddForm.reset()
       if (ownerShortageAddProductIdInput) ownerShortageAddProductIdInput.value = ''
       if (ownerShortageSuggestions) ownerShortageSuggestions.innerHTML = ''
@@ -3754,12 +4015,13 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
       teamLoadError = ''
       refreshUI()
       try {
+        const productRowsPromise = getProducts()
         const [rows, productRows, recentOrders, dashboardData, companyData, supplierRows, preferredMap] =
           await Promise.all([
-            getTodayShortages(),
-            getProducts(),
+            getTodayShortages(productRowsPromise),
+            productRowsPromise,
             getRecentOrders(),
-            getDashboardInsights(dashboardRangeDays),
+            getDashboardInsights(dashboardRangeDays, productRowsPromise),
             getCompanyDetails(),
             getSuppliers(),
             getPreferredProductByName(),
@@ -3773,8 +4035,14 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
         writeCompanyDetailsCache(companyDetails)
         suppliers = supplierRows
         preferredProductByName = preferredMap
+        hasLoadedShortages = true
+        hasLoadedProducts = true
+        hasLoadedRecentOrders = true
+        hasLoadedDashboardInsights = true
+        hasLoadedSupplierData = true
         try {
           teamUsers = await loadTeamUsers()
+          hasLoadedTeamUsers = true
         } catch (err) {
           teamLoadError = err instanceof Error ? err.message : 'Nuk u ngarkua ekipa.'
         } finally {
@@ -4388,7 +4656,7 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     }
 
     if (action === 'show-all') {
-      if (section !== 'porosite') return
+      if (currentSection !== 'porosite') return
       showAllOrders = !showAllOrders
       if (showAllOrders) {
         allOrders = await getRecentOrders(100)
@@ -4452,13 +4720,32 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
   }
 
   const runGenerateOrders = async (): Promise<void> => {
-    generatedOrders = await generateOrdersFromShortages(getFilteredRows())
-    allOrders = await getRecentOrders(100)
-    showAllOrders = false
-    clearSuggestedQtyDraft()
-    refreshUI()
-    showToast('Porositë u gjeneruan sipas furnitorit.')
-    document.getElementById('owner-orders-panel')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    try {
+      await ensureShortagesReadyForOrders()
+      const rows = getFilteredRows()
+      if (!rows.length) {
+        showToast(
+          searchQuery.trim()
+            ? 'Nuk ka mungesa që përputhen me kërkimin aktual.'
+            : 'Nuk ka mungesa për të gjeneruar porosi.'
+        )
+        return
+      }
+      generatedOrders = await generateOrdersFromShortages(rows)
+      if (!generatedOrders.length) {
+        showToast('Nuk u krijua asnjë porosi për mungesat aktuale.')
+        return
+      }
+      allOrders = await getRecentOrders(100)
+      hasLoadedRecentOrders = true
+      showAllOrders = false
+      clearSuggestedQtyDraft()
+      refreshUI()
+      showToast('Porositë u gjeneruan sipas furnitorit.')
+      document.getElementById('owner-orders-panel')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    } catch {
+      showToast('Gjenerimi i porosive dështoi.')
+    }
   }
   const generateBtn = document.getElementById('btn-generate-orders') as HTMLButtonElement | null
   const generateTodayBtn = document.getElementById('btn-generate-orders-today') as HTMLButtonElement | null
@@ -4469,16 +4756,21 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     void runGenerateOrders()
   })
 
-  teamLoading = canSeeSettings
+  const productsPromise: Promise<ProductView[]> = initialShouldLoadProducts
+    ? getProducts()
+    : Promise.resolve([] as ProductView[])
+  teamLoading = initialShouldLoadTeamUsers
   Promise.allSettled([
-    getTodayShortages(),
-    getProducts(),
+    initialShouldLoadShortages ? getTodayShortages(productsPromise) : Promise.resolve([] as ShortageView[]),
+    productsPromise,
     loadAccountInfo(),
-    getRecentOrders(),
-    getDashboardInsights(dashboardRangeDays).catch(() => buildEmptyDashboardInsights(dashboardRangeDays)),
+    initialShouldLoadRecentOrders ? getRecentOrders() : Promise.resolve([] as OwnerOrder[]),
+    initialShouldLoadDashboardInsights
+      ? getDashboardInsights(dashboardRangeDays, productsPromise).catch(() => buildEmptyDashboardInsights(dashboardRangeDays))
+      : Promise.resolve(buildEmptyDashboardInsights(dashboardRangeDays)),
     getCompanyDetails(),
-    getSuppliers(),
-    getPreferredProductByName(),
+    initialShouldLoadSupplierData ? getSuppliers() : Promise.resolve([] as SupplierView[]),
+    initialShouldLoadSupplierData ? getPreferredProductByName() : Promise.resolve({} as Record<string, string>),
   ]).then(async (results) => {
     const valueAt = <T,>(idx: number, fallback: T): T => {
       const r = results[idx]
@@ -4492,28 +4784,48 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     const supplierRows = valueAt(6, [] as SupplierView[])
     const preferredMap = valueAt(7, {} as Record<string, string>)
 
-    shortages = applySuggestedQtyDraft(rows)
-    products = productRows
-    suppliers = supplierRows
-    preferredProductByName = preferredMap
-    allOrders = recentOrders
-    dashboardInsights = dashboardData
+    if (initialShouldLoadShortages) {
+      shortages = applySuggestedQtyDraft(rows)
+      hasLoadedShortages = true
+    }
+    if (initialShouldLoadProducts) {
+      products = productRows
+      hasLoadedProducts = true
+    }
+    if (initialShouldLoadSupplierData) {
+      suppliers = supplierRows
+      preferredProductByName = preferredMap
+      hasLoadedSupplierData = true
+    }
+    if (initialShouldLoadRecentOrders) {
+      allOrders = recentOrders
+      hasLoadedRecentOrders = true
+    }
+    if (initialShouldLoadDashboardInsights) {
+      dashboardInsights = dashboardData
+      hasLoadedDashboardInsights = true
+    }
     const cachedCompanyDetails = readCompanyDetailsCache()
     companyDetails = mergeCompanyDetails(companyData, cachedCompanyDetails)
     writeCompanyDetailsCache(companyDetails)
     generatedOrders = []
     showAllOrders = false
-    if (canSeeSettings) {
+    if (initialShouldLoadTeamUsers) {
       try {
         teamUsers = await loadTeamUsers()
         teamLoadError = ''
+        hasLoadedTeamUsers = true
       } catch (err) {
         teamLoadError = err instanceof Error ? err.message : 'Nuk u ngarkua ekipa.'
       } finally {
         teamLoading = false
       }
+    } else {
+      teamLoading = false
     }
     refreshUI()
+    applySectionUI()
+    void ensureSectionData(currentSection)
   })
 
   if (isSupabaseConfigured) {
@@ -4523,18 +4835,13 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
         'postgres_changes',
         { event: '*', schema: 'public', table: 'mungesat' },
         () => {
-          void reloadShortages()
-          void reloadDashboardInsights()
+          if (hasLoadedShortages) void reloadShortages()
+          if (hasLoadedDashboardInsights) void reloadDashboardInsights()
         }
       )
       .subscribe()
-
-    window.addEventListener(
-      'hashchange',
-      () => {
-        supabase.removeChannel(channel)
-      },
-      { once: true }
-    )
+    disposers.push(() => {
+      void supabase.removeChannel(channel)
+    })
   }
 }

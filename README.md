@@ -1,83 +1,158 @@
 # FlowInventory
 
-PWA për **mungesat** dhe **porositë sipas furnitorit** në farmaci (punëtor + pronar). Stack: **Vite + TypeScript + Supabase** (Auth, Postgres, Realtime).
+FlowInventory eshte nje PWA per menaxhimin e mungesave dhe porosive ne farmaci, me role te ndara per `OWNER`, `MANAGER` dhe `WORKER`.
 
---
----
+Stack-u kryesor:
 
-## Ekzekutim lokal
+- `Vite`
+- `TypeScript`
+- `Supabase` (`Auth`, `Postgres`, `Realtime`)
+- `xlsx`
+- `jspdf`
+- `vite-plugin-pwa`
+
+## Cfare ben aplikacioni
+
+- `WORKER` kerkon produkte dhe shton mungesa shpejt
+- `OWNER` menaxhon dashboard-in, mungesat, porosite, importin, kompanine dhe ekipen
+- `MANAGER` ka qasje ne dashboard, mungesat dhe porosite, por jo ne seksionet owner-only
+- mungesat grupohen sipas furnitorit per gjenerim porosish
+- porosite mund te kopjohen, shkarkohen si PDF dhe te shenohen si `SENT`
+- te dhenat jane te ndara sipas kompanise
+- `public.mungesat` perdoret me `Realtime`
+
+## Rruget kryesore
+
+Aplikacioni perdor hash routing.
+
+| Rruga | Pershkrimi |
+| --- | --- |
+| `#/kycu` | Login |
+| `#/mungesat` | Paneli i worker-it |
+| `#/pronari` | Dashboard i owner/manager |
+| `#/pronari/mungesat` | Mungesat per owner/manager |
+| `#/porosite` | Porosite |
+| `#/import` | Import dhe produkte |
+| `#/profile` | Profili i llogarise |
+| `#/kompania` | Detajet e kompanise |
+| `#/ekipa` | Ekipi |
+| `#/settings` | Settings |
+
+Shenim:
+
+- `MANAGER` nuk duhet te hyje ne `#/import`, `#/kompania`, `#/ekipa`, `#/settings`
+- `WORKER` ridrejtohet te `#/mungesat`
+
+## Setup lokal
+
+1. Instalo varshmerite:
 
 ```bash
 npm ci
-cp .env.example .env
 ```
 
-Plotëso `.env`:
+2. Krijo `.env` nga `.env.example`
+
 ```env
-VITE_SUPABASE_URL=https://PROJEKTI.supabase.co
+VITE_SUPABASE_URL=https://projekti.supabase.co
 VITE_SUPABASE_ANON_KEY=anon_key_ketu
 ```
+
+3. Nise aplikacionin:
 
 ```bash
 npm run dev
 ```
 
-Build produksioni (Render përdor të njëjtin komandë; output: folderi **`out`**):
+4. Build produksioni:
 
 ```bash
 npm run build
 ```
 
----
+Output-i i build-it gjendet ne folderin `out`.
 
-## Konfigurim Supabase
+## Supabase
 
-1. Krijo projekt në [Supabase](https://supabase.com).
-2. Apliko skemën:
-   - **Rekomanduar:** migrimet në `supabase/migrations/` sipas rendit të datës (`db push` ose kopjo-ngjit në SQL Editor).
-   - **Alternativë:** një herë `scripts/schema.sql`, pastaj SQL nga `supabase/migrations/20260324120000_rls_worker_orders_read.sql` (RLS + RPC për sugjerim pa lexim `order_items` nga punëtori).
-3. **Auth:** krijo përdorues; në tabelën **`profiles`** vendos `OWNER` ose `WORKER`.
-4. **Realtime:** aktivizo për **`public.mungesat`** (Replication / publication sipas versionit të Supabase).
-5. Më shumë: `SUPABASE_SETUP.md`, `scripts/README.md`.
+Per me e perdorur app-in si duhet, projekti pret:
 
----
+- tabelat dhe RPC-te nga `supabase/migrations/`
+- `profiles.role` me nje nga vlerat: `OWNER`, `MANAGER`, `WORKER`
+- `profiles.company_id` te vendosur sakte
+- `Realtime` aktiv per `public.mungesat`
 
-## Deploy në Render (static site)
+Dokumente ndihmese:
 
-1. **New → Static Site** → lidh repo-n nga GitHub.
-2. **Build command:** `npm ci && npm run build`
-3. **Publish directory:** `out` (jo `dist`)
-4. **Environment variables:** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`  
-   Pas ndryshimit të env, rideploy (Vite i ngul vlerat në build).
+- `SUPABASE_SETUP.md`
+- `MULTI_TENANCY_TEST_GUIDE.md`
+- `supabase/migrations/`
 
-Në Supabase → **Authentication → URL Configuration**, shto URL-në e Render (`https://....onrender.com`) dhe redirect për OAuth nëse përdoret.
+## Deploy
 
----
+Per deploy si static site:
 
-## Rrugët kryesore
+1. Build command:
 
- Rruga apo Përshkrimi 
+```bash
+npm ci && npm run build
+```
 
-| `#/kycu` | Hyrje 
-| `#/regjistrohu` | Regjistrim |
-| `#/mungesat` | Punëtori |
-| `#/pronari` | Pronari – mungesat |
-| `#/porosite` | Pronari – porositë |
-| `#/import` | Pronari – import |
+2. Publish directory:
 
----
+```text
+out
+```
 
-## Checklist para dorëzimit (udhëzues)
+3. Environment variables:
 
-- [ ] Punëtori nuk sheh fushë për sasi (vetëm kërkim + URGJENT + shënim).
-- [ ] Pronari sheh listën live (Realtime për `mungesat`).
-- [ ] Dedup rrit `added_count`, një rresht për ditë/produkt.
-- [ ] Gjenerimi: një `orders` për furnitor + `order_items` për çdo bar.
-- [ ] Kopjo recipt → toast **«U kopjua!»**
-- [ ] RLS: pa login nuk lexohen/ndryshohen të dhënat.
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
 
----
+Nese perdoret OAuth, shto URL-te perkatese te projektit te deploy-uar te `Supabase Auth`.
 
-## Tech stack
+## Scripts
 
-Vite 6, TypeScript, Tailwind 4, `@supabase/supabase-js`, `vite-plugin-pwa`, `xlsx`, `jspdf`.
+| Script | Pershkrimi |
+| --- | --- |
+| `npm run dev` | Development server |
+| `npm run build` | Production build |
+| `npm run preview` | Preview i build-it |
+
+## Verifikim
+
+Aktualisht repo-ja nuk ka suite automatike testesh (`test`, `spec`, `e2e`).
+
+Kontrollet praktike qe duhen perdorur:
+
+```bash
+npx tsc --noEmit
+npm run build
+```
+
+Pastaj duhen testuar manualisht ne browser:
+
+- login per `OWNER`, `MANAGER`, `WORKER`
+- shtim mungese nga worker
+- reflektim i mungeses te owner pa refresh manual
+- gjenerim porosish sipas furnitorit
+- PDF / copy / mark sent
+- izolimi i te dhenave sipas kompanise
+- mobile layout
+
+## Struktura e rendesishme
+
+| Path | Roli |
+| --- | --- |
+| `src/main.ts` | Routing dhe startup lifecycle |
+| `src/pages/login.ts` | Login UI |
+| `src/pages/mungesat.ts` | Worker page |
+| `src/pages/pronari.ts` | Owner/manager page |
+| `src/lib/auth.ts` | Auth, profile, redirects |
+| `src/lib/data.ts` | Data access, shortages, orders, dashboard |
+| `src/style.css` | Global styles dhe responsive layout |
+
+## Shenime
+
+- projekti eshte optimizuar qe navigimi mes seksioneve owner te mos beje full remount sa here nderrohet hash route
+- refresh-i ne localhost ben cleanup te cache/service worker vetem nje here per session
+- build-i i prod-it perdor `out`, jo `dist`

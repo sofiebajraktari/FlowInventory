@@ -6,6 +6,11 @@ import { getMockUser, setMockUser } from '../types.js'
 const OAUTH_PENDING_ROLE_KEY = 'flowinventory_oauth_pending_role'
 const PASSWORD_RECOVERY_KEY = 'flowinventory_password_recovery_pending'
 const AUTH_NOTICE_KEY = 'flowinventory_auth_notice'
+const PROFILE_CACHE_TTL_MS = 30_000
+const PROFILE_FALLBACK_TTL_MS = 5_000
+const PROFILE_LOOKUP_RETRY_DELAYS_MS = [0, 120, 250, 500] as const
+
+let cachedProfile: { userId: string; profile: Profile; expiresAt: number } | null = null
 
 function requireSupabase(): void {
   if (!isSupabaseConfigured) {
@@ -18,6 +23,26 @@ function normalizeRole(value: unknown): UserRole | null {
   const role = value.toUpperCase()
   if (role === 'OWNER' || role === 'MANAGER' || role === 'WORKER') return role
   return null
+}
+
+function clearCachedProfile(): void {
+  cachedProfile = null
+}
+
+function readCachedProfile(userId: string): Profile | null {
+  if (!cachedProfile) return null
+  if (cachedProfile.userId !== userId) return null
+  if (cachedProfile.expiresAt <= Date.now()) return null
+  return cachedProfile.profile
+}
+
+function writeCachedProfile(userId: string, profile: Profile, ttlMs = PROFILE_CACHE_TTL_MS): Profile {
+  cachedProfile = {
+    userId,
+    profile,
+    expiresAt: Date.now() + ttlMs,
+  }
+  return profile
 }
 
 function isLikelyEmail(value: string): boolean {
@@ -53,6 +78,31 @@ async function getCurrentSession(): Promise<Session | null> {
   const { data, error } = await supabase.auth.getSession()
   if (error) return null
   return data.session ?? null
+}
+
+function getProfileFromSession(session: Session | null | undefined): Profile | null {
+  const role = normalizeRole(session?.user?.user_metadata?.role)
+  return role ? { role } : null
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+async function fetchProfileFromDb(userId: string): Promise<Profile | null> {
+  const { data, error } = await supabase.from('profiles').select('role').eq('id', userId).maybeSingle()
+  if (error || !data) return null
+  const role = normalizeRole((data as { role?: unknown }).role)
+  return role ? { role } : null
+}
+
+async function fetchProfileWithRetry(userId: string): Promise<Profile | null> {
+  for (const delayMs of PROFILE_LOOKUP_RETRY_DELAYS_MS) {
+    if (delayMs > 0) await sleep(delayMs)
+    const profile = await fetchProfileFromDb(userId)
+    if (profile) return profile
+  }
+  return null
 }
 
 export function takeAuthNotice(): string {
@@ -94,29 +144,40 @@ async function resolveLoginEmail(identifier: string): Promise<string> {
 }
 
 async function ensureProfileAfterLogin(): Promise<Profile | null> {
-  const profile = await getProfile()
-  if (profile) return profile
-
-  const { data: userData } = await supabase.auth.getUser()
-  const user = userData.user
+  const session = await getCurrentSession()
+  const user = session?.user ?? null
   if (!user) return null
+  const cached = readCachedProfile(user.id)
+  if (cached) return cached
 
-  const metadataRole = normalizeRole(user.user_metadata?.role)
-  if (!metadataRole) return null
+  const profile = await fetchProfileWithRetry(user.id)
+  if (profile) return writeCachedProfile(user.id, profile)
 
-  const { error } = await supabase.from('profiles').insert({ id: user.id, role: metadataRole })
-  if (error) return null
-  return { role: metadataRole }
+  const metadataProfile = getProfileFromSession(session)
+  if (!metadataProfile) return null
+
+  const { error } = await supabase.from('profiles').insert({ id: user.id, role: metadataProfile.role })
+  if (error) {
+    return writeCachedProfile(user.id, metadataProfile, PROFILE_FALLBACK_TTL_MS)
+  }
+  return writeCachedProfile(user.id, metadataProfile)
 }
 
 export async function getProfile(): Promise<Profile | null> {
   if (!isSupabaseConfigured) return null
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data, error } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle()
-  if (error || !data) return null
-  const role = normalizeRole((data as { role?: unknown }).role)
-  return role ? { role } : null
+  const session = await getCurrentSession()
+  const user = session?.user ?? null
+  if (!user) {
+    clearCachedProfile()
+    return null
+  }
+  const cached = readCachedProfile(user.id)
+  if (cached) return cached
+  const profile = await fetchProfileWithRetry(user.id)
+  if (profile) return writeCachedProfile(user.id, profile)
+  const fallback = getProfileFromSession(session)
+  if (!fallback) return null
+  return writeCachedProfile(user.id, fallback, PROFILE_FALLBACK_TTL_MS)
 }
 
 export function redirectByRole(role: UserRole): void {
@@ -129,7 +190,7 @@ export async function signIn(identifier: string, password: string): Promise<Prof
   requireSupabase()
   const loginEmail = await resolveLoginEmail(identifier)
 
-  const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password })
+  const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password })
   if (error) {
     const lower = String(error.message ?? '').toLowerCase()
     if (lower.includes('email not confirmed')) throw new Error('Verifiko emailin para kyçjes.')
@@ -139,6 +200,12 @@ export async function signIn(identifier: string, password: string): Promise<Prof
     }
     if (lower.includes('invalid login credentials')) throw new Error('Email/username ose fjalëkalim i pasaktë.')
     throw new Error(error.message || 'Kyçja dështoi.')
+  }
+
+  const immediateRole = normalizeRole(data.user?.user_metadata?.role)
+  const signedInUserId = String(data.user?.id ?? '').trim()
+  if (signedInUserId && immediateRole) {
+    writeCachedProfile(signedInUserId, { role: immediateRole }, PROFILE_FALLBACK_TTL_MS)
   }
 
   const profile = await ensureProfileAfterLogin()
@@ -213,6 +280,7 @@ export async function signOut(scope: 'global' | 'local' | 'others' = 'local'): P
     }
     await supabase.auth.signOut(scope === 'global' ? undefined : ({ scope } as any))
   }
+  clearCachedProfile()
   if (scope !== 'others') {
     setMockUser(null)
     window.location.hash = '#/kycu'
@@ -295,16 +363,17 @@ export async function finalizeOAuthProfileIfNeeded(): Promise<Profile | null> {
   if (!pendingRole) return null
 
   const { error } = await supabase.from('profiles').upsert({ id: userData.user.id, role: pendingRole })
-  if (error) return null
+  if (error) {
+    return writeCachedProfile(userData.user.id, { role: pendingRole }, PROFILE_FALLBACK_TTL_MS)
+  }
 
   localStorage.removeItem(OAUTH_PENDING_ROLE_KEY)
-  return { role: pendingRole }
+  return writeCachedProfile(userData.user.id, { role: pendingRole })
 }
 
 export function hasSession(): Promise<boolean> {
   if (!isSupabaseConfigured) return Promise.resolve(false)
-  return supabase.auth
-    .getUser()
-    .then(({ data, error }) => Boolean(!error && data.user))
+  return getCurrentSession()
+    .then((session) => Boolean(session))
     .catch(() => false)
 }

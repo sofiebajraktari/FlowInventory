@@ -72,6 +72,38 @@ export interface DashboardInsights {
   weekdayTrend: Array<{ day: string; count: number }>
 }
 
+const COMPANY_ID_CACHE_TTL_MS = 60_000
+let companyIdCache: { userId: string; companyId: string; expiresAt: number } | null = null
+let companyIdPromise: Promise<string | null> | null = null
+
+function readCachedCompanyId(userId: string): string | null {
+  if (!companyIdCache) return null
+  if (companyIdCache.userId !== userId) return null
+  if (companyIdCache.expiresAt <= Date.now()) return null
+  return companyIdCache.companyId
+}
+
+function writeCachedCompanyId(userId: string, companyId: string): string {
+  companyIdCache = {
+    userId,
+    companyId,
+    expiresAt: Date.now() + COMPANY_ID_CACHE_TTL_MS,
+  }
+  return companyId
+}
+
+async function resolveProductsInput(
+  productsInput?: ProductView[] | Promise<ProductView[]>
+): Promise<ProductView[]> {
+  if (Array.isArray(productsInput)) return productsInput
+  if (productsInput) return productsInput
+  return getProducts()
+}
+
+function isUuidValue(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+}
+
 function shiftIsoDays(base: Date, offsetDays: number): string {
   const d = new Date(base)
   d.setDate(d.getDate() + offsetDays)
@@ -83,76 +115,97 @@ function shiftIsoDays(base: Date, offsetDays: number): string {
 
 async function resolveCurrentCompanyId(): Promise<string | null> {
   if (!isSupabaseConfigured) return null
-  const { data: authData } = await supabase.auth.getUser()
-  const user = authData.user
-  const userId = user?.id
-  if (!userId) return null
-
-  const currentCompany = await supabase.rpc('current_company_id')
-  if (!currentCompany.error) {
-    const companyId = String(currentCompany.data ?? '').trim()
-    if (companyId) return companyId
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+  if (sessionError) return null
+  const user = sessionData.session?.user
+  const userId = String(user?.id ?? '').trim()
+  if (!userId) {
+    companyIdCache = null
+    return null
   }
+  const currentUser = user!
 
-  const username =
-    String(user.user_metadata?.username ?? '').trim().toLocaleLowerCase('sq-AL') ||
-    String(user.email ?? '').split('@')[0].trim().toLocaleLowerCase('sq-AL') ||
-    'owner'
-  const roleMeta = String(user.user_metadata?.role ?? '').trim().toUpperCase()
-  const canBootstrap = roleMeta === '' || roleMeta === 'OWNER' || roleMeta === 'MANAGER'
-  if (!canBootstrap) return null
+  const cachedCompanyId = readCachedCompanyId(userId)
+  if (cachedCompanyId) return cachedCompanyId
+  if (companyIdPromise) return companyIdPromise
 
-  const profileRes = await supabase
-    .from('profiles')
-    .select('company_id,role')
-    .eq('id', userId)
-    .maybeSingle()
-  if (!profileRes.error && profileRes.data) {
-    const companyId = String((profileRes.data as { company_id?: unknown }).company_id ?? '').trim()
-    if (companyId) return companyId
-    const role = String((profileRes.data as { role?: unknown }).role ?? '').trim().toUpperCase()
-    if (role && role !== 'OWNER' && role !== 'MANAGER') return null
-  }
-
-  const codeFromMeta = String(user.user_metadata?.company_code ?? '').trim().toLocaleLowerCase('sq-AL')
-  const rawCode = codeFromMeta || username || 'main'
-  const companyCode = rawCode
-    .replace(/[^a-z0-9_-]+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 40) || 'main'
-  const companyName =
-    String(user.user_metadata?.company_name ?? '').trim() ||
-    `Company ${username || 'Owner'}`
-
-  let bootstrap = await supabase.rpc('bootstrap_company_owner', {
-    p_company_name: companyName,
-    p_company_code: companyCode,
-    p_username: username,
-  })
-  if (bootstrap.error) {
-    const msg = String(bootstrap.error.message ?? '')
-    const codeTaken = /company_code_taken|duplicate|already exists/i.test(msg)
-    if (codeTaken) {
-      const uniqueCode = `${companyCode || 'main'}-${String(userId).replace(/-/g, '').slice(0, 6)}`
-      bootstrap = await supabase.rpc('bootstrap_company_owner', {
-        p_company_name: companyName,
-        p_company_code: uniqueCode,
-        p_username: username,
-      })
+  companyIdPromise = (async () => {
+    const currentCompany = await supabase.rpc('current_company_id')
+    if (!currentCompany.error) {
+      const companyId = String(currentCompany.data ?? '').trim()
+      if (companyId) return writeCachedCompanyId(userId, companyId)
     }
-  }
-  if (!bootstrap.error) {
-    const createdCompanyId = String(bootstrap.data ?? '').trim()
-    if (createdCompanyId) return createdCompanyId
-  }
 
-  const retryCurrentCompany = await supabase.rpc('current_company_id')
-  if (!retryCurrentCompany.error) {
-    const companyId = String(retryCurrentCompany.data ?? '').trim()
-    if (companyId) return companyId
-  }
-  return null
+    const metadataCompanyId = String(currentUser.user_metadata?.company_id ?? '').trim()
+    if (isUuidValue(metadataCompanyId)) {
+      return writeCachedCompanyId(userId, metadataCompanyId)
+    }
+
+    const username =
+      String(currentUser.user_metadata?.username ?? '').trim().toLocaleLowerCase('sq-AL') ||
+      String(currentUser.email ?? '').split('@')[0].trim().toLocaleLowerCase('sq-AL') ||
+      'owner'
+    const roleMeta = String(currentUser.user_metadata?.role ?? '').trim().toUpperCase()
+    const canBootstrap = roleMeta === '' || roleMeta === 'OWNER' || roleMeta === 'MANAGER'
+    if (!canBootstrap) return null
+
+    const profileRes = await supabase
+      .from('profiles')
+      .select('company_id,role')
+      .eq('id', userId)
+      .maybeSingle()
+    if (!profileRes.error && profileRes.data) {
+      const companyId = String((profileRes.data as { company_id?: unknown }).company_id ?? '').trim()
+      if (companyId) return writeCachedCompanyId(userId, companyId)
+      const role = String((profileRes.data as { role?: unknown }).role ?? '').trim().toUpperCase()
+      if (role && role !== 'OWNER' && role !== 'MANAGER') return null
+    }
+
+    const codeFromMeta = String(currentUser.user_metadata?.company_code ?? '').trim().toLocaleLowerCase('sq-AL')
+    const rawCode = codeFromMeta || username || 'main'
+    const companyCode =
+      rawCode
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 40) || 'main'
+    const companyName =
+      String(currentUser.user_metadata?.company_name ?? '').trim() ||
+      `Company ${username || 'Owner'}`
+
+    let bootstrap = await supabase.rpc('bootstrap_company_owner', {
+      p_company_name: companyName,
+      p_company_code: companyCode,
+      p_username: username,
+    })
+    if (bootstrap.error) {
+      const msg = String(bootstrap.error.message ?? '')
+      const codeTaken = /company_code_taken|duplicate|already exists/i.test(msg)
+      if (codeTaken) {
+        const uniqueCode = `${companyCode || 'main'}-${String(userId).replace(/-/g, '').slice(0, 6)}`
+        bootstrap = await supabase.rpc('bootstrap_company_owner', {
+          p_company_name: companyName,
+          p_company_code: uniqueCode,
+          p_username: username,
+        })
+      }
+    }
+    if (!bootstrap.error) {
+      const createdCompanyId = String(bootstrap.data ?? '').trim()
+      if (createdCompanyId) return writeCachedCompanyId(userId, createdCompanyId)
+    }
+
+    const retryCurrentCompany = await supabase.rpc('current_company_id')
+    if (!retryCurrentCompany.error) {
+      const companyId = String(retryCurrentCompany.data ?? '').trim()
+      if (companyId) return writeCachedCompanyId(userId, companyId)
+    }
+    return null
+  })().finally(() => {
+    companyIdPromise = null
+  })
+
+  return companyIdPromise
 }
 
 function todayIso(): string {
@@ -750,7 +803,10 @@ export async function adminDeleteUser(userId: string): Promise<{ ok: true } | { 
   return { ok: true }
 }
 
-export async function getDashboardInsights(days = 7): Promise<DashboardInsights> {
+export async function getDashboardInsights(
+  days = 7,
+  productsInput?: ProductView[] | Promise<ProductView[]>
+): Promise<DashboardInsights> {
   const safeDays = Math.max(1, Math.min(30, Math.floor(days)))
   const weekdayLabels = ['Hën', 'Mar', 'Mër', 'Enj', 'Pre', 'Sht', 'Die']
   const buildRange = (anchorIso: string): string[] => {
@@ -804,13 +860,30 @@ export async function getDashboardInsights(days = 7): Promise<DashboardInsights>
     }
   }
 
+  const latestShortageRes = await supabase
+    .from('mungesat')
+    .select('entry_date,created_at')
+    .eq('company_id', companyId)
+    .order('entry_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const latestShortage = (latestShortageRes.data ?? null) as { entry_date?: unknown; created_at?: unknown } | null
+  const latestDay =
+    String(latestShortage?.entry_date ?? '').trim() ||
+    String(latestShortage?.created_at ?? '').trim().slice(0, 10) ||
+    todayIso()
+  const dateRange = buildRange(latestDay)
+  const sinceIso = dateRange[0]
+
   const [shortagesRes, products] = await Promise.all([
     supabase
       .from('mungesat')
       .select('entry_date,created_at,added_count,product_id,urgent')
       .eq('company_id', companyId)
+      .gte('created_at', `${sinceIso}T00:00:00.000Z`)
       .order('created_at', { ascending: true }),
-    getProducts(),
+    resolveProductsInput(productsInput),
   ])
   if (shortagesRes.error || !shortagesRes.data) {
     return {
@@ -854,12 +927,6 @@ export async function getDashboardInsights(days = 7): Promise<DashboardInsights>
     }
   }
 
-  const latestDay = normalizedRows
-    .map((r) => r.day)
-    .sort((a, b) => (a > b ? 1 : a < b ? -1 : 0))
-    .slice(-1)[0]
-  const dateRange = buildRange(latestDay)
-  const sinceIso = dateRange[0]
   const byDay = new Map<string, number>(dateRange.map((date) => [date, 0]))
   const bySupplier = new Map<string, number>()
   const byProduct = new Map<string, number>()
@@ -1132,13 +1199,15 @@ export async function addMungese(productId: string, urgent: boolean, note: strin
   if (error) throw error
 }
 
-export async function getTodayShortages(): Promise<ShortageView[]> {
+export async function getTodayShortages(
+  productsInput?: ProductView[] | Promise<ProductView[]>
+): Promise<ShortageView[]> {
   if (!isSupabaseConfigured) return fromMockShortages(getShortagesMock())
   const companyId = await resolveCurrentCompanyId()
   if (!companyId) return []
 
   const [productsRes, shortagesRes, lastQtyRpc] = await Promise.all([
-    getProducts(),
+    resolveProductsInput(productsInput),
     supabase
       .from('mungesat')
       .select('id,product_id,urgent,note,added_count,created_by,created_by_role')

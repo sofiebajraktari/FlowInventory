@@ -16,17 +16,34 @@ import './style.css'
 const app = document.getElementById('app')!
 const SESSION_GUARD_INTERVAL_MS = 120000
 const FOREGROUND_RECHECK_MS = 45000
+const LOCAL_SW_CLEANUP_SESSION_KEY = 'flowinventory_local_sw_cleanup_done'
 let loginPageModulePromise: Promise<typeof import('./pages/login.js')> | null = null
 let workerPageModulePromise: Promise<typeof import('./pages/mungesat.js')> | null = null
 let ownerPageModulePromise: Promise<typeof import('./pages/pronari.js')> | null = null
 
+type AppContainerWithOwnerHandle = HTMLElement & {
+  __flowOwnerHandle?: {
+    destroy: () => void
+  }
+}
+
+function clearMountedOwnerPage(container: HTMLElement): void {
+  const host = container as AppContainerWithOwnerHandle
+  const handle = host.__flowOwnerHandle
+  if (!handle) return
+  handle.destroy()
+  delete host.__flowOwnerHandle
+}
+
 async function renderLoginPage(container: HTMLElement): Promise<void> {
+  clearMountedOwnerPage(container)
   loginPageModulePromise ??= import('./pages/login.js')
   const { renderLogin } = await loginPageModulePromise
   renderLogin(container)
 }
 
 async function renderWorkerPage(container: HTMLElement): Promise<void> {
+  clearMountedOwnerPage(container)
   workerPageModulePromise ??= import('./pages/mungesat.js')
   const { renderMungesat } = await workerPageModulePromise
   renderMungesat(container, 'mungesat')
@@ -48,6 +65,11 @@ async function disableLocalServiceWorkerCache(): Promise<void> {
     window.location.hostname === '127.0.0.1' ||
     window.location.hostname === '::1'
   if (!isLocalhost) return
+  try {
+    if (sessionStorage.getItem(LOCAL_SW_CLEANUP_SESSION_KEY) === '1') return
+    sessionStorage.setItem(LOCAL_SW_CLEANUP_SESSION_KEY, '1')
+  } catch {
+  }
 
   if ('serviceWorker' in navigator) {
     const regs = await navigator.serviceWorker.getRegistrations()
@@ -179,8 +201,12 @@ async function render(): Promise<void> {
 }
 
 function renderWithGuard(): void {
+  if (renderInFlight) {
+    renderQueued = true
+    return
+  }
   lastRenderAtMs = Date.now()
-  render().catch((error: unknown) => {
+  renderInFlight = render().catch((error: unknown) => {
     console.error('Render error:', error)
     const message = error instanceof Error ? error.message : 'Gabim i panjohur gjatë ngarkimit.'
     app.innerHTML = `
@@ -194,10 +220,17 @@ function renderWithGuard(): void {
         </div>
       </div>
     `
+  }).finally(() => {
+    renderInFlight = null
+    if (!renderQueued) return
+    renderQueued = false
+    renderWithGuard()
   })
 }
 
 let lastRenderAtMs = 0
+let renderInFlight: Promise<void> | null = null
+let renderQueued = false
 
 function renderIfStale(): void {
   const now = Date.now()
@@ -205,25 +238,23 @@ function renderIfStale(): void {
   renderWithGuard()
 }
 
-disableLocalServiceWorkerCache()
-  .catch((err) => console.warn('Local SW cleanup failed:', err))
-  .finally(() => {
-    window.addEventListener('hashchange', () => renderWithGuard())
-    window.addEventListener('focus', () => renderIfStale())
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) renderIfStale()
-    })
-    if (isSupabaseConfigured) {
-      supabase.auth.onAuthStateChange((event) => {
-        if (event === 'PASSWORD_RECOVERY') {
-          setPasswordRecoveryPending()
-          if (window.location.hash !== '#/kycu') window.location.hash = '#/kycu'
-        }
-        renderWithGuard()
-      })
-      window.setInterval(() => {
-        if (!document.hidden) renderWithGuard()
-      }, SESSION_GUARD_INTERVAL_MS)
+window.addEventListener('hashchange', () => renderWithGuard())
+window.addEventListener('focus', () => renderIfStale())
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) renderIfStale()
+})
+if (isSupabaseConfigured) {
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') return
+    if (event === 'PASSWORD_RECOVERY') {
+      setPasswordRecoveryPending()
+      if (window.location.hash !== '#/kycu') window.location.hash = '#/kycu'
     }
     renderWithGuard()
   })
+  window.setInterval(() => {
+    if (!document.hidden) renderWithGuard()
+  }, SESSION_GUARD_INTERVAL_MS)
+}
+renderWithGuard()
+void disableLocalServiceWorkerCache().catch((err) => console.warn('Local SW cleanup failed:', err))

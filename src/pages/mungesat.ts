@@ -149,16 +149,16 @@ export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat
         <img src="/brand/flowguard/logo.png" alt="FlowInventory" class="h-6 w-6 rounded-full object-cover" />
       </button>
 
-      <main class="premium-main px-4 py-4 md:px-6 md:py-5">
+      <main class="premium-main worker-main px-4 py-4 md:px-6 md:py-5">
         <header class="premium-header mb-5 border-b border-slate-200 pb-4">
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <div class="flex min-w-0 items-center gap-3">
+          <div class="worker-header-layout flex flex-wrap items-center justify-between gap-3">
+            <div class="worker-header-title flex min-w-0 items-center gap-3">
               <div class="min-w-0">
                 <p class="text-xs uppercase tracking-wide text-slate-500">Mungesat</p>
                 <h1 class="text-xl md:text-2xl font-semibold tracking-tight text-slate-900">Shto mungesa shpejt</h1>
               </div>
             </div>
-            <div class="flex items-center gap-2">
+            <div class="worker-header-actions flex items-center gap-2">
               <button type="button" data-theme-toggle="1" class="theme-toggle-chip rounded-full px-2.5 py-1 text-[11px] font-semibold"></button>
               <button type="button" id="btn-signout" class="premium-btn-ghost inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs">
                 ${iconLogout}
@@ -169,7 +169,7 @@ export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat
         </header>
 
         <section class="${section === 'mungesat' ? '' : 'hidden '}premium-card mb-4 p-5">
-          <div class="mb-3 flex flex-wrap items-center gap-2 text-[11px]">
+          <div class="worker-kpi-row mb-3 flex flex-wrap items-center gap-2 text-[11px]">
             <span class="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-700">
               ${iconKpiTotal}
               Totali: <strong id="worker-stat-total" class="font-semibold text-slate-900">0</strong>
@@ -191,7 +191,7 @@ export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat
                 <input id="search-bar" type="text" autocomplete="off" placeholder="Kërko barin…" class="premium-top-search-input" aria-label="Kërko barin" />
               </div>
             </div>
-            <div class="flex flex-col sm:flex-row sm:items-center gap-2 text-sm text-slate-700">
+            <div class="worker-entry-controls flex flex-col sm:flex-row sm:items-center gap-2 text-sm text-slate-700">
               <label class="inline-flex items-center gap-2">
                 <input id="urgent-toggle" type="checkbox" class="h-4 w-4 rounded border-slate-300 bg-white text-red-500 focus:ring-blue-500" />
                 URGJENT
@@ -300,8 +300,8 @@ export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat
     }
 
     try {
-      const [{ data: userData }, profile] = await Promise.all([supabase.auth.getUser(), getProfile()])
-      const user = userData.user
+      const [{ data: sessionData }, profile] = await Promise.all([supabase.auth.getSession(), getProfile()])
+      const user = sessionData.session?.user
       currentUserId = String(user?.id ?? '').trim()
       const firstName = String(user?.user_metadata?.first_name ?? '').trim()
       const lastName = String(user?.user_metadata?.last_name ?? '').trim()
@@ -334,8 +334,8 @@ export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat
     if (isSupabaseConfigured) {
       let userId = currentUserId
       if (!userId) {
-        const authRes = await supabase.auth.getUser()
-        userId = String(authRes.data.user?.id ?? '').trim()
+        const sessionRes = await supabase.auth.getSession()
+        userId = String(sessionRes.data.session?.user?.id ?? '').trim()
         currentUserId = userId
       }
       if (userId) {
