@@ -250,6 +250,16 @@ export function renderMungesat(container: HTMLElement, _routeSection = 'mungesat
     navToggle?.setAttribute('aria-expanded', open ? 'true' : 'false')
     syncNavReopenVisibility()
   }
+  const closeSidebarOnMobile = (): void => {
+    if (!window.matchMedia('(min-width: 768px)').matches) {
+      setSidebarOpen(false)
+    }
+  }
+  const sidebarNavLinks = Array.from(sidebar?.querySelectorAll<HTMLAnchorElement>('a[href^="#/"]') ?? [])
+
+  sidebarNavLinks.forEach((link) => {
+    link.addEventListener('click', closeSidebarOnMobile)
+  })
 
   navToggle?.addEventListener('click', () => {
     const isDesktop = window.matchMedia('(min-width: 768px)').matches

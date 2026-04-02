@@ -3559,6 +3559,17 @@ Shënim: Ju lutem konfirmoni disponueshmërinë dhe kohën e dorëzimit.`
     navToggle?.setAttribute('aria-expanded', open ? 'true' : 'false')
     syncNavReopenVisibility()
   }
+  const closeSidebarOnMobile = (): void => {
+    if (!window.matchMedia('(min-width: 768px)').matches) {
+      setSidebarOpen(false)
+    }
+  }
+  const sidebarNavLinks = Array.from(sidebar?.querySelectorAll<HTMLAnchorElement>('a[href^="#/"]') ?? [])
+
+  sidebarNavLinks.forEach((link) => {
+    link.addEventListener('click', closeSidebarOnMobile)
+    disposers.push(() => link.removeEventListener('click', closeSidebarOnMobile))
+  })
   navToggle?.addEventListener('click', () => {
     const isDesktop = window.matchMedia('(min-width: 768px)').matches
     const currentlyOpen = isDesktop
